@@ -72,21 +72,8 @@ async fn main() -> Result<(), ReddSaverError> {
                 .value_name("SUBREDDITS")
                 .value_delimiter(",")
                 .help("Download media from these subreddits only")
-                .takes_value(true),
-        )
-        .arg(
-            Arg::with_name("upvoted")
-                .short("u")
-                .long("--upvoted")
-                .takes_value(false)
-                .help("Download media from upvoted posts"),
-        )
-        .arg(
-            Arg::with_name("undo")
-                .short("U")
-                .long("undo")
-                .takes_value(false)
-                .help("Unsave or remote upvote for post after processing"),
+                .takes_value(true)
+                .required_if("all", "true"),
         )
         .get_matches();
 
@@ -104,10 +91,7 @@ async fn main() -> Result<(), ReddSaverError> {
     } else {
         None
     };
-    let upvoted = matches.is_present("upvoted");
-    let listing_type = if upvoted { &ListingType::Upvoted } else { &ListingType::Saved };
 
-    let undo = matches.is_present("undo");
 
     // initialize environment from the .env file
     dotenv::from_filename(env_file).ok();
@@ -137,8 +121,6 @@ async fn main() -> Result<(), ReddSaverError> {
         info!("PASSWORD = {}", mask_sensitive(&password));
         info!("USER_AGENT = {}", &user_agent);
         info!("SUBREDDITS = {}", print_subreddits(&subreddits));
-        info!("UPVOTED = {}", upvoted);
-        info!("UNDO = {}", undo);
         info!("FFMPEG AVAILABLE = {}", ffmpeg_available);
 
         return Ok(());
@@ -178,18 +160,15 @@ async fn main() -> Result<(), ReddSaverError> {
 
     info!("Starting data gathering from Reddit. This might take some time. Hold on....");
     // get the saved/upvoted posts for this particular user
-    let listing = user.listing(listing_type).await?;
+    let listing = user.listing(&ListingType::Saved).await?;
     debug!("Posts: {:#?}", listing);
 
     let downloader = Downloader::new(
-        &user,
         &listing,
-        &listing_type,
         &data_directory,
         &subreddits,
         should_download,
         use_human_readable,
-        undo,
         ffmpeg_available,
         &session,
     );

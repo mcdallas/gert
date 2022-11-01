@@ -81,41 +81,32 @@ struct SupportedMedia {
 
 #[derive(Debug)]
 pub struct Downloader<'a> {
-    user: &'a User<'a>,
     listing: &'a Vec<Listing>,
-    listing_type: &'a ListingType,
     data_directory: &'a str,
     subreddits: &'a Option<Vec<&'a str>>,
     should_download: bool,
     use_human_readable: bool,
-    undo: bool,
     ffmpeg_available: bool,
     session: &'a reqwest::Client,
 }
 
 impl<'a> Downloader<'a> {
     pub fn new(
-        user: &'a User,
         listing: &'a Vec<Listing>,
-        listing_type: &'a ListingType,
         data_directory: &'a str,
         subreddits: &'a Option<Vec<&'a str>>,
         should_download: bool,
         use_human_readable: bool,
-        undo: bool,
         ffmpeg_available: bool,
         session: &'a reqwest::Client,
 
     ) -> Downloader<'a> {
         Downloader {
-            user,
             listing,
-            listing_type,
             data_directory,
             subreddits,
             should_download,
             use_human_readable,
-            undo,
             ffmpeg_available,
             session,
         }
@@ -127,7 +118,7 @@ impl<'a> Downloader<'a> {
 
         for collection in self.listing {
             full_summary =
-                full_summary.add(self.download_collection(collection, self.listing_type).await?);
+                full_summary.add(self.download_collection(collection).await?);
         }
 
         info!("#####################################");
@@ -145,7 +136,6 @@ impl<'a> Downloader<'a> {
     async fn download_collection(
         &self,
         collection: &Listing,
-        listing_type: &ListingType,
     ) -> Result<Summary, ReddSaverError> {
         let summary = Arc::new(Mutex::new(Summary {
             media_supported: 0,
@@ -322,10 +312,6 @@ impl<'a> Downloader<'a> {
                             "Subreddit INVALID!: {} NOT present in {:#?}",
                             subreddit, self.subreddits
                         );
-                    }
-
-                    if self.undo {
-                        self.user.undo(post_name, listing_type).await?;
                     }
 
                     Ok::<(), ReddSaverError>(())

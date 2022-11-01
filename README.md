@@ -157,8 +157,6 @@ FLAGS:
     -h, --help              Prints help information
     -H, --human-readable    Use human readable names for files
     -s, --show-config       Show the current config being used
-    -U, --undo              Unsave or remote upvote for post after processing
-    -u, --upvoted           Download media from upvoted posts
     -V, --version           Prints version information
 
 OPTIONS:
