@@ -38,11 +38,6 @@ pub fn mask_sensitive(word: &str) -> String {
     };
 }
 
-/// Return delimited subreddit names or EMPTY if None
-pub fn print_subreddits(subreddits: &Option<Vec<&str>>) -> String {
-    return if let Some(s) = subreddits { s.join(",") } else { String::from("<ALL>") };
-}
-
 /// Check if the given application is present in the $PATH
 pub fn application_present(name: String) -> bool {
     let result = which(name);

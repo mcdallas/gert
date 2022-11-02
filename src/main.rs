@@ -11,6 +11,7 @@ use crate::errors::ReddSaverError;
 use crate::errors::ReddSaverError::DataDirNotFound;
 use crate::user::{ListingType, User};
 use crate::utils::*;
+use crate::subreddit::{Subreddit};
 
 mod auth;
 mod download;
@@ -18,9 +19,13 @@ mod errors;
 mod structures;
 mod user;
 mod utils;
+mod subreddit;
 
 #[tokio::main]
 async fn main() -> Result<(), ReddSaverError> {
+
+    let periods = ["now", "hour", "day", "week", "month", "year", "all"];
+    
     let matches = App::new("ReddSaver")
         .version(crate_version!())
         .author("Manoj Karthick Selva Kumar")
@@ -65,15 +70,44 @@ async fn main() -> Result<(), ReddSaverError> {
                 .help("Use human readable names for files"),
         )
         .arg(
+            Arg::with_name("limit")
+                .short("l")
+                .long("limit")
+                .value_name("LIMIT")
+                .help("Limit the number of posts to download")
+                .takes_value(true)
+                .default_value("25"),
+        )
+        .arg(
             Arg::with_name("subreddits")
                 .short("S")
                 .long("subreddits")
                 .multiple(true)
                 .value_name("SUBREDDITS")
                 .value_delimiter(",")
-                .help("Download media from these subreddits only")
+                .help("Download media from these subreddits")
                 .takes_value(true)
-                .required_if("all", "true"),
+                .required(true)
+        )
+        .arg(
+            Arg::with_name("period")
+                .short("p")
+                .long("period")
+                .value_name("PERIOD")
+                .help("Time period to download from")
+                .takes_value(true)
+                .possible_values(&periods)
+                .default_value("day")
+        )
+        .arg(
+            Arg::with_name("feed")
+                .short("f")
+                .long("feed")
+                .value_name("feed")
+                .help("Feed to download from")
+                .takes_value(true)
+                .possible_values(&["hot", "new", "top", "rising"])
+                .default_value("top")
         )
         .get_matches();
 
@@ -86,12 +120,10 @@ async fn main() -> Result<(), ReddSaverError> {
     // generate human readable file names instead of MD5 Hashed file names
     let use_human_readable = matches.is_present("human_readable");
     // restrict downloads to these subreddits
-    let subreddits: Option<Vec<&str>> = if matches.is_present("subreddits") {
-        Some(matches.values_of("subreddits").unwrap().collect())
-    } else {
-        None
-    };
-
+    let subreddits: Vec<&str> = matches.values_of("subreddits").unwrap().collect();
+    let limit = matches.value_of("limit").unwrap().parse::<u32>().expect("Limit must be a number");
+    let period = matches.value_of("period");
+    let feed = matches.value_of("feed").unwrap();
 
     // initialize environment from the .env file
     dotenv::from_filename(env_file).ok();
@@ -120,8 +152,10 @@ async fn main() -> Result<(), ReddSaverError> {
         info!("USERNAME = {}", &username);
         info!("PASSWORD = {}", mask_sensitive(&password));
         info!("USER_AGENT = {}", &user_agent);
-        info!("SUBREDDITS = {}", print_subreddits(&subreddits));
+        info!("SUBREDDITS = {}", &subreddits.join(","));
         info!("FFMPEG AVAILABLE = {}", ffmpeg_available);
+        info!("LIMIT = {}", limit);
+        info!("PERIOD = {}", period.unwrap());
 
         return Ok(());
     }
@@ -160,11 +194,15 @@ async fn main() -> Result<(), ReddSaverError> {
 
     info!("Starting data gathering from Reddit. This might take some time. Hold on....");
     // get the saved/upvoted posts for this particular user
-    let listing = user.listing(&ListingType::Saved).await?;
-    debug!("Posts: {:#?}", listing);
+    // let listing = user.listing(&ListingType::Saved).await?;
+    let mut listings = vec![];
+    for subreddit in &subreddits {
+        let listing = Subreddit::new(subreddit).get_feed(feed, limit, period).await?;
+        listings.push(listing);
+    }
 
     let downloader = Downloader::new(
-        &listing,
+        &listings,
         &data_directory,
         &subreddits,
         should_download,

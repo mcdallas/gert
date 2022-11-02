@@ -55,6 +55,7 @@ impl<'a> User<'a> {
         Ok(response)
     }
 
+    #[allow(dead_code)]
     pub async fn listing(
         &self,
         listing_type: &ListingType,
