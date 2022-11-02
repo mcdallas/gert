@@ -9,9 +9,10 @@ use auth::Client;
 use crate::download::Downloader;
 use crate::errors::ReddSaverError;
 use crate::errors::ReddSaverError::DataDirNotFound;
-use crate::user::{ListingType, User};
+use crate::user::User;
 use crate::utils::*;
 use crate::subreddit::{Subreddit};
+use crate::structures::Post;
 
 mod auth;
 mod download;
@@ -194,14 +195,14 @@ async fn main() -> Result<(), ReddSaverError> {
 
     info!("Starting data gathering from Reddit. This might take some time. Hold on....");
 
-    let mut listings = vec![];
+    let mut posts: Vec<Post> = Vec::with_capacity(limit as usize * subreddits.len());
     for subreddit in &subreddits {
         let listing = Subreddit::new(subreddit).get_feed(feed, limit, period).await?;
-        listings.push(listing);
+        posts.extend(listing.data.children.into_iter().filter(|post| post.data.url.is_some()));
     }
 
     let downloader = Downloader::new(
-        &listings,
+        posts,
         &data_directory,
         should_download,
         use_human_readable,

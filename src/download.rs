@@ -1,6 +1,5 @@
 use std::borrow::Borrow;
 use std::fs::File;
-use std::ops::Add;
 use std::path::Path;
 use std::process::Command;
 use std::sync::{Arc, Mutex};
@@ -15,8 +14,7 @@ use url::{Position, Url};
 
 use crate::errors::ReddSaverError;
 use crate::structures::{GfyData, PostData};
-use crate::structures::{Listing, Summary};
-use crate::user::{ListingType, User};
+use crate::structures::{Summary, Post};
 use crate::utils::{check_path_present, check_url_is_mp4};
 
 static JPG_EXTENSION: &str = "jpg";
@@ -81,7 +79,7 @@ struct SupportedMedia {
 
 #[derive(Debug)]
 pub struct Downloader<'a> {
-    listing: &'a Vec<Listing>,
+    posts: Vec<Post>,
     data_directory: &'a str,
     should_download: bool,
     use_human_readable: bool,
@@ -91,7 +89,7 @@ pub struct Downloader<'a> {
 
 impl<'a> Downloader<'a> {
     pub fn new(
-        listing: &'a Vec<Listing>,
+        posts: Vec<Post>,
         data_directory: &'a str,
         should_download: bool,
         use_human_readable: bool,
@@ -100,7 +98,7 @@ impl<'a> Downloader<'a> {
 
     ) -> Downloader<'a> {
         Downloader {
-            listing,
+            posts,
             data_directory,
             should_download,
             use_human_readable,
@@ -110,19 +108,13 @@ impl<'a> Downloader<'a> {
     }
 
     pub async fn run(self) -> Result<(), ReddSaverError> {
-        let mut full_summary =
-            Summary { media_downloaded: 0, media_skipped: 0, media_supported: 0 };
-
-        for collection in self.listing {
-            full_summary =
-                full_summary.add(self.download_collection(collection).await?);
-        }
+        let summary = self.download_collection(&self.posts).await?;
 
         info!("#####################################");
         info!("Download Summary:");
-        info!("Number of supported media: {}", full_summary.media_supported);
-        info!("Number of media downloaded: {}", full_summary.media_downloaded);
-        info!("Number of media skipped: {}", full_summary.media_skipped);
+        info!("Number of supported media: {}", summary.media_supported);
+        info!("Number of media downloaded: {}", summary.media_downloaded);
+        info!("Number of media skipped: {}", summary.media_skipped);
         info!("#####################################");
         info!("FIN.");
 
@@ -132,7 +124,7 @@ impl<'a> Downloader<'a> {
     /// Download and save medias from Reddit in parallel
     async fn download_collection(
         &self,
-        collection: &Listing,
+        collection: &Vec<Post>,
     ) -> Result<Summary, ReddSaverError> {
         let summary = Arc::new(Mutex::new(Summary {
             media_supported: 0,
@@ -141,13 +133,7 @@ impl<'a> Downloader<'a> {
         }));
 
         collection
-            .data
-            .children
-            .clone()
             .into_iter()
-            // filter out the posts where a URL is present
-            // not that this application cannot download URLs linked within the text of the post
-            .filter(|item| item.data.url.is_some())
             .map(|item| {
                 let summary_arc = summary.clone();
                 // since the latency for downloading an media from the network is unpredictable
