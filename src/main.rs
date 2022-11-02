@@ -167,7 +167,7 @@ async fn main() -> Result<(), ReddSaverError> {
             Ffmpeg needs be installed to combine the audio and video into a single mp4."
         );
     }
-;
+    ;
     let session = reqwest::Client::builder()
         .cookie_store(true)
         .user_agent(get_user_agent_string(&username))
@@ -193,8 +193,7 @@ async fn main() -> Result<(), ReddSaverError> {
     info!("Link Karma: {:#?}", user_info.data.link_karma);
 
     info!("Starting data gathering from Reddit. This might take some time. Hold on....");
-    // get the saved/upvoted posts for this particular user
-    // let listing = user.listing(&ListingType::Saved).await?;
+
     let mut listings = vec![];
     for subreddit in &subreddits {
         let listing = Subreddit::new(subreddit).get_feed(feed, limit, period).await?;

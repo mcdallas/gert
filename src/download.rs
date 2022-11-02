@@ -163,147 +163,141 @@ impl<'a> Downloader<'a> {
                         None => "",
                     };
 
-                    let is_valid = self.subreddits.contains(&subreddit);
+                    let supported_media_items = self.get_media(item.data.borrow()).await?;
 
-                    if is_valid {
-                        debug!("Subreddit VALID: {} present in {:#?}", subreddit, subreddit);
+                    for supported_media in supported_media_items {
+                        let media_urls = &supported_media.components;
+                        let media_type = supported_media.media_type;
+                        let mut media_files = Vec::new();
 
-                        let supported_media_items = self.get_media(item.data.borrow()).await?;
+                        // the number of components in the supported media is the number available for download
+                        summary_arc.lock().unwrap().media_supported += supported_media.components.len() as i32;
 
-                        for supported_media in supported_media_items {
-                            let media_urls = &supported_media.components;
-                            let media_type = supported_media.media_type;
-                            let mut media_files = Vec::new();
+                        let mut local_skipped = 0;
+                        for (index, url) in media_urls.iter().enumerate() {
+                            let mut item_index = format!("{}", index);
+                            
+                            let mut extension = {
+                                let mut full_url = Url::parse(url).unwrap();
+                                full_url.set_query(None);
+                                let clean_url = full_url.to_string();
+                                String::from(clean_url.split('.').last().unwrap_or("unknown")).replace("/", "_")
+                            };
 
-                            // the number of components in the supported media is the number available for download
-                            summary_arc.lock().unwrap().media_supported += supported_media.components.len() as i32;
+                            // if the media is a reddit video, they have separate audio and video components.
+                            // to differentiate this from albums, which use the regular _0, _1, etc indices,
+                            // we use _component_0, component_1 indices to explicitly inform that these are
+                            // components rather than individual media.
+                            if media_type == MediaType::RedditVideoWithAudio {
+                                item_index = format!("component_{}", index);
+                            };
+                            // some reddit videos don't have the mp4 extension, eg. DASH_<A>_<B>
+                            // explicitly adding an mp4 extension to make it easy to recognize in the finder
+                            if (media_type == MediaType::RedditVideoWithoutAudio
+                                || media_type == MediaType::RedditVideoWithAudio)
+                                && !extension.ends_with(".mp4") {
+                                extension = format!("{}.{}", extension, ".mp4");
+                            }
+                            let file_name = self.generate_file_name(
+                                &url,
+                                &subreddit,
+                                &extension,
+                                &post_name,
+                                &post_title,
+                                &item_index,
+                            );
 
-                            let mut local_skipped = 0;
-                            for (index, url) in media_urls.iter().enumerate() {
-                                let mut item_index = format!("{}", index);
-                                let mut extension =
-                                    String::from(url.split('.').last().unwrap_or("unknown")).replace("/", "_");
-
-                                // if the media is a reddit video, they have separate audio and video components.
-                                // to differentiate this from albums, which use the regular _0, _1, etc indices,
-                                // we use _component_0, component_1 indices to explicitly inform that these are
-                                // components rather than individual media.
-                                if media_type == MediaType::RedditVideoWithAudio {
-                                    item_index = format!("component_{}", index);
-                                };
-                                // some reddit videos don't have the mp4 extension, eg. DASH_<A>_<B>
-                                // explicitly adding an mp4 extension to make it easy to recognize in the finder
-                                if (media_type == MediaType::RedditVideoWithoutAudio
-                                    || media_type == MediaType::RedditVideoWithAudio)
-                                    && !extension.ends_with(".mp4") {
-                                    extension = format!("{}.{}", extension, ".mp4");
+                            if self.should_download {
+                                let status = self.save_or_skip(url, &file_name);
+                                // update the summary statistics based on the status
+                                match status.await? {
+                                    MediaStatus::Downloaded => {
+                                        summary_arc.lock().unwrap().media_downloaded += 1;
+                                    }
+                                    MediaStatus::Skipped => {
+                                        local_skipped += 1;
+                                        summary_arc.lock().unwrap().media_skipped += 1;
+                                    }
                                 }
-                                let file_name = self.generate_file_name(
-                                    &url,
+                            } else {
+                                info!("Media available at URL: {}", &url);
+                                summary_arc.lock().unwrap().media_skipped += 1;
+                            }
+
+                            // push all the available media files into a vector
+                            // this is needed in the next step to combine the components using ffmpeg
+                            media_files.push(file_name);
+                        }
+
+                        debug!("Media type: {:#?}", media_type);
+                        debug!("Media files: {:?}", media_files.len());
+                        debug!("Locally skipped items: {:?}", local_skipped);
+
+                        if (media_type == MediaType::RedditVideoWithAudio)
+                            && (media_files.len() == 2)
+                            && (local_skipped < 2) {
+                            if self.ffmpeg_available {
+                                debug!("Assembling components together");
+                                let first_url = media_urls.first().unwrap();
+                                let extension =
+                                    String::from(first_url.split('.').last().unwrap_or("unknown"));
+                                // this generates the name of the media without the component indices
+                                // this file name is used for saving the ffmpeg combined file
+                                let combined_file_name = self.generate_file_name(
+                                    first_url,
                                     &subreddit,
                                     &extension,
                                     &post_name,
                                     &post_title,
-                                    &item_index,
+                                    "0",
                                 );
 
+                                let temporary_dir = tempdir()?;
+                                let temporary_file_name = temporary_dir.path().join("combined.mp4");
+
                                 if self.should_download {
-                                    let status = self.save_or_skip(url, &file_name);
-                                    // update the summary statistics based on the status
-                                    match status.await? {
-                                        MediaStatus::Downloaded => {
-                                            summary_arc.lock().unwrap().media_downloaded += 1;
-                                        }
-                                        MediaStatus::Skipped => {
-                                            local_skipped += 1;
-                                            summary_arc.lock().unwrap().media_skipped += 1;
-                                        }
+                                    // if the media is a reddit video and it has two components, then we
+                                    // need to assemble them into one file using ffmpeg.
+                                    let mut command = Command::new("ffmpeg");
+                                    for media_file in &media_files {
+                                        command.arg("-i").arg(media_file);
                                     }
-                                } else {
-                                    info!("Media available at URL: {}", &url);
-                                    summary_arc.lock().unwrap().media_skipped += 1;
-                                }
+                                    command.arg("-c").arg("copy")
+                                        .arg("-map").arg("1:a")
+                                        .arg("-map").arg("0:v")
+                                        .arg(&temporary_file_name);
 
-                                // push all the available media files into a vector
-                                // this is needed in the next step to combine the components using ffmpeg
-                                media_files.push(file_name);
-                            }
+                                    debug!("Executing command: {:#?}", command);
+                                    let output = command.output()?;
 
-                            debug!("Media type: {:#?}", media_type);
-                            debug!("Media files: {:?}", media_files.len());
-                            debug!("Locally skipped items: {:?}", local_skipped);
-
-                            if (media_type == MediaType::RedditVideoWithAudio)
-                                && (media_files.len() == 2)
-                                && (local_skipped < 2) {
-                                if self.ffmpeg_available {
-                                    debug!("Assembling components together");
-                                    let first_url = media_urls.first().unwrap();
-                                    let extension =
-                                        String::from(first_url.split('.').last().unwrap_or("unknown"));
-                                    // this generates the name of the media without the component indices
-                                    // this file name is used for saving the ffmpeg combined file
-                                    let combined_file_name = self.generate_file_name(
-                                        first_url,
-                                        &subreddit,
-                                        &extension,
-                                        &post_name,
-                                        &post_title,
-                                        "0",
-                                    );
-
-                                    let temporary_dir = tempdir()?;
-                                    let temporary_file_name = temporary_dir.path().join("combined.mp4");
-
-                                    if self.should_download {
-                                        // if the media is a reddit video and it has two components, then we
-                                        // need to assemble them into one file using ffmpeg.
-                                        let mut command = Command::new("ffmpeg");
-                                        for media_file in &media_files {
-                                            command.arg("-i").arg(media_file);
-                                        }
-                                        command.arg("-c").arg("copy")
-                                            .arg("-map").arg("1:a")
-                                            .arg("-map").arg("0:v")
-                                            .arg(&temporary_file_name);
-
-                                        debug!("Executing command: {:#?}", command);
-                                        let output = command.output()?;
-
-                                        // check the status code of the ffmpeg command. if the command is unsuccessful,
-                                        // display the error and skip combining the media.
-                                        if output.status.success() {
-                                            debug!("Successfully combined into temporary file: {:?}", temporary_file_name);
-                                            debug!("Renaming file: {} -> {}", temporary_file_name.display(), combined_file_name);
-                                            fs::rename(&temporary_file_name, &combined_file_name)?;
-                                        } else {
-                                            // if we encountered an error, we will write logs from ffmpeg into a new log file
-                                            let log_file_name = self.generate_file_name(
-                                                first_url,
-                                                &subreddit,
-                                                "log",
-                                                &post_name,
-                                                &post_title,
-                                                "0",
-                                            );
-                                            let err = String::from_utf8(output.stderr).unwrap();
-                                            warn!("Could not combine video {} and audio {}. Saving log to: {}", 
-                                                media_urls.first().unwrap(), media_urls.last().unwrap(), log_file_name);
-                                            fs::write(log_file_name, err)?;
-                                        }
+                                    // check the status code of the ffmpeg command. if the command is unsuccessful,
+                                    // display the error and skip combining the media.
+                                    if output.status.success() {
+                                        debug!("Successfully combined into temporary file: {:?}", temporary_file_name);
+                                        debug!("Renaming file: {} -> {}", temporary_file_name.display(), combined_file_name);
+                                        fs::rename(&temporary_file_name, &combined_file_name)?;
+                                    } else {
+                                        // if we encountered an error, we will write logs from ffmpeg into a new log file
+                                        let log_file_name = self.generate_file_name(
+                                            first_url,
+                                            &subreddit,
+                                            "log",
+                                            &post_name,
+                                            &post_title,
+                                            "0",
+                                        );
+                                        let err = String::from_utf8(output.stderr).unwrap();
+                                        warn!("Could not combine video {} and audio {}. Saving log to: {}", 
+                                            media_urls.first().unwrap(), media_urls.last().unwrap(), log_file_name);
+                                        fs::write(log_file_name, err)?;
                                     }
-                                } else {
-                                    warn!("Skipping combining the individual components since ffmpeg is not installed");
                                 }
                             } else {
-                                debug!("Skipping combining reddit video.");
+                                warn!("Skipping combining the individual components since ffmpeg is not installed");
                             }
+                        } else {
+                            debug!("Skipping combining reddit video.");
                         }
-                    } else {
-                        debug!(
-                            "Subreddit INVALID!: {} NOT present in {:#?}",
-                            subreddit, self.subreddits
-                        );
                     }
 
                     Ok::<(), ReddSaverError>(())

@@ -3,7 +3,6 @@ use crate::errors::ReddSaverError;
 use crate::structures::{Listing, UserAbout};
 use log::{debug, info};
 use std::borrow::Borrow;
-use std::collections::HashMap;
 use std::fmt;
 use std::fmt::{Display, Formatter};
 
