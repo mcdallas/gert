@@ -3,7 +3,7 @@
 .idea/
 .DS_Store
 data/
-reddsaver/
+downloads/
 *.iml
 .envrc
 mock/

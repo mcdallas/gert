@@ -56,9 +56,8 @@ async fn main() -> Result<(), GertError> {
                 .takes_value(true),
         )
         .arg(
-            Arg::with_name("show_config")
-                .short("s")
-                .long("show-config")
+            Arg::with_name("debug")
+                .long("debug")
                 .takes_value(false)
                 .help("Show the current config being used"),
         )
@@ -87,12 +86,12 @@ async fn main() -> Result<(), GertError> {
         )
         .arg(
             Arg::with_name("subreddits")
-                .short("S")
-                .long("subreddits")
+                .short("s")
+                .long("subreddit")
                 .multiple(true)
-                .value_name("SUBREDDITS")
+                .value_name("SUBREDDIT")
                 .value_delimiter(",")
-                .help("Download media from these subreddits")
+                .help("Download media from these subreddit")
                 .takes_value(true)
                 .required(true)
         )
@@ -114,7 +113,7 @@ async fn main() -> Result<(), GertError> {
                 .help("Feed to download from")
                 .takes_value(true)
                 .possible_values(&["hot", "new", "top", "rising"])
-                .default_value("top")
+                .default_value("hot")
         )
         .get_matches();
 
@@ -154,7 +153,7 @@ async fn main() -> Result<(), GertError> {
     }
 
     // if the option is show-config, show the configuration and return immediately
-    if matches.is_present("show_config") {
+    if matches.is_present("debug") {
         info!("Current configuration:");
         info!("ENVIRONMENT_FILE = {}", &env_file);
         info!("DATA_DIRECTORY = {}", &data_directory);
