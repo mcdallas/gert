@@ -11,7 +11,7 @@ use crate::errors::ReddSaverError;
 use crate::errors::ReddSaverError::DataDirNotFound;
 use crate::user::User;
 use crate::utils::*;
-use crate::subreddit::{Subreddit};
+use crate::subreddit::Subreddit;
 use crate::structures::Post;
 
 mod auth;
@@ -24,8 +24,6 @@ mod subreddit;
 
 #[tokio::main]
 async fn main() -> Result<(), ReddSaverError> {
-
-    let periods = ["now", "hour", "day", "week", "month", "year", "all"];
     
     let matches = App::new("ReddSaver")
         .version(crate_version!())
@@ -41,12 +39,20 @@ async fn main() -> Result<(), ReddSaverError> {
                 .takes_value(true),
         )
         .arg(
-            Arg::with_name("data_directory")
-                .short("d")
-                .long("data-dir")
+            Arg::with_name("match")
+                .short("m")
+                .long("match")
+                .value_name("MATCH")
+                .help("Pass a regex expresion to filter the title of the post")
+                .takes_value(true),
+        )
+        .arg(
+            Arg::with_name("output_directory")
+                .short("o")
+                .long("output")
                 .value_name("DATA_DIR")
                 .help("Directory to save the media to")
-                .default_value("data")
+                .default_value(".")
                 .takes_value(true),
         )
         .arg(
@@ -97,7 +103,7 @@ async fn main() -> Result<(), ReddSaverError> {
                 .value_name("PERIOD")
                 .help("Time period to download from")
                 .takes_value(true)
-                .possible_values(&periods)
+                .possible_values(&["now", "hour", "day", "week", "month", "year", "all"])
                 .default_value("day")
         )
         .arg(
@@ -113,7 +119,7 @@ async fn main() -> Result<(), ReddSaverError> {
         .get_matches();
 
     let env_file = matches.value_of("environment").unwrap();
-    let data_directory = String::from(matches.value_of("data_directory").unwrap());
+    let data_directory = String::from(matches.value_of("output_directory").unwrap());
     // generate the URLs to download from without actually downloading the media
     let should_download = !matches.is_present("dry_run");
     // check if ffmpeg is present for combining video streams
@@ -125,7 +131,11 @@ async fn main() -> Result<(), ReddSaverError> {
     let limit = matches.value_of("limit").unwrap().parse::<u32>().expect("Limit must be a number");
     let period = matches.value_of("period");
     let feed = matches.value_of("feed").unwrap();
-
+    let pattern = match matches.value_of("match") {
+        Some(pattern) => regex::Regex::new(pattern).expect("Invalid regex pattern"),
+        None => regex::Regex::new(".*").unwrap(),
+    };
+    
     // initialize environment from the .env file
     dotenv::from_filename(env_file).ok();
 
@@ -157,6 +167,8 @@ async fn main() -> Result<(), ReddSaverError> {
         info!("FFMPEG AVAILABLE = {}", ffmpeg_available);
         info!("LIMIT = {}", limit);
         info!("PERIOD = {}", period.unwrap());
+        info!("FEED = {}", feed);
+        info!("MATCH = {}", pattern.as_str());
 
         return Ok(());
     }
@@ -198,7 +210,12 @@ async fn main() -> Result<(), ReddSaverError> {
     let mut posts: Vec<Post> = Vec::with_capacity(limit as usize * subreddits.len());
     for subreddit in &subreddits {
         let listing = Subreddit::new(subreddit).get_feed(feed, limit, period).await?;
-        posts.extend(listing.data.children.into_iter().filter(|post| post.data.url.is_some()));
+        posts.extend(
+            listing.data.children
+            .into_iter()
+            .filter(|post| post.data.url.is_some())
+            .filter(|post| pattern.is_match(post.data.title.as_ref().unwrap_or(&"".to_string())))
+        );
     }
 
     let downloader = Downloader::new(
