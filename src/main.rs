@@ -7,8 +7,8 @@ use log::{debug, info, warn};
 use auth::Client;
 
 use crate::download::Downloader;
-use crate::errors::ReddSaverError;
-use crate::errors::ReddSaverError::DataDirNotFound;
+use crate::errors::GertError;
+use crate::errors::GertError::DataDirNotFound;
 use crate::user::User;
 use crate::utils::*;
 use crate::subreddit::Subreddit;
@@ -23,9 +23,9 @@ mod utils;
 mod subreddit;
 
 #[tokio::main]
-async fn main() -> Result<(), ReddSaverError> {
+async fn main() -> Result<(), GertError> {
     
-    let matches = App::new("ReddSaver")
+    let matches = App::new("Gert")
         .version(crate_version!())
         .author("Manoj Karthick Selva Kumar")
         .about("Simple CLI tool to download saved media from Reddit")

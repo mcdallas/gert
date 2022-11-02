@@ -1,5 +1,5 @@
 use crate::auth::Auth;
-use crate::errors::ReddSaverError;
+use crate::errors::GertError;
 use crate::structures::{Listing, UserAbout};
 use log::{debug, info};
 use std::borrow::Borrow;
@@ -15,7 +15,7 @@ pub struct User<'a> {
     /// Reqwest client
     session: &'a reqwest::Client,
 }
-
+#[allow(dead_code)]
 #[derive(Debug)]
 pub enum ListingType {
     Saved,
@@ -36,7 +36,7 @@ impl<'a> User<'a> {
         User { auth, name, session }
     }
 
-    pub async fn about(&self) -> Result<UserAbout, ReddSaverError> {
+    pub async fn about(&self) -> Result<UserAbout, GertError> {
         // all API requests that use a bearer token should be made to oauth.reddit.com instead
         let url = format!("https://oauth.reddit.com/user/{}/about", self.name);
 
@@ -58,7 +58,7 @@ impl<'a> User<'a> {
     pub async fn listing(
         &self,
         listing_type: &ListingType,
-    ) -> Result<Vec<Listing>, ReddSaverError> {
+    ) -> Result<Vec<Listing>, GertError> {
 
         let mut complete = false;
         let mut processed = 0;

@@ -12,7 +12,7 @@ use reqwest::StatusCode;
 use tempfile::tempdir;
 use url::{Position, Url};
 
-use crate::errors::ReddSaverError;
+use crate::errors::GertError;
 use crate::structures::{GfyData, PostData};
 use crate::structures::{Summary, Post};
 use crate::utils::{check_path_present, check_url_is_mp4};
@@ -107,7 +107,7 @@ impl<'a> Downloader<'a> {
         }
     }
 
-    pub async fn run(self) -> Result<(), ReddSaverError> {
+    pub async fn run(self) -> Result<(), GertError> {
         let summary = self.download_collection(&self.posts).await?;
 
         info!("#####################################");
@@ -125,7 +125,7 @@ impl<'a> Downloader<'a> {
     async fn download_collection(
         &self,
         collection: &Vec<Post>,
-    ) -> Result<Summary, ReddSaverError> {
+    ) -> Result<Summary, GertError> {
         let summary = Arc::new(Mutex::new(Summary {
             media_supported: 0,
             media_downloaded: 0,
@@ -283,7 +283,7 @@ impl<'a> Downloader<'a> {
                         }
                     }
 
-                    Ok::<(), ReddSaverError>(())
+                    Ok::<(), GertError>(())
                 }
             })
             .collect::<FuturesUnordered<_>>()
@@ -300,7 +300,7 @@ impl<'a> Downloader<'a> {
         Ok(local_summary)
     }
 
-    /// Generate a file name in the right format that Reddsaver expects
+    /// Generate a file name in the right format that Gert expects
     fn generate_file_name(
         &self,
         url: &str,
@@ -358,7 +358,7 @@ impl<'a> Downloader<'a> {
 
 
 /// Helper function that downloads and saves a single media from Reddit or Imgur
-    async fn save_or_skip(&self, url: &str, file_name: &str) -> Result<MediaStatus, ReddSaverError> {
+    async fn save_or_skip(&self, url: &str, file_name: &str) -> Result<MediaStatus, GertError> {
         if check_path_present(&file_name) {
             debug!("Media from url {} already downloaded. Skipping...", url);
             Ok(MediaStatus::Skipped)
@@ -373,14 +373,14 @@ impl<'a> Downloader<'a> {
     }
 
 /// Download media from the given url and save to data directory. Also create data directory if not present already
-    async fn download_media(&self, file_name: &str, url: &str) -> Result<bool, ReddSaverError> {
+    async fn download_media(&self, file_name: &str, url: &str) -> Result<bool, GertError> {
         // create directory if it does not already exist
         // the directory is created relative to the current working directory
         let mut status = false;
         let directory = Path::new(file_name).parent().unwrap();
         match fs::create_dir_all(directory) {
             Ok(_) => (),
-            Err(_e) => return Err(ReddSaverError::CouldNotCreateDirectory),
+            Err(_e) => return Err(GertError::CouldNotCreateDirectory),
         }
         
         let maybe_response = self.session
@@ -417,7 +417,7 @@ impl<'a> Downloader<'a> {
     }
 
 /// Convert Gfycat/Redgifs GIFs into mp4 URLs for download
-    async fn gfy_to_mp4(&self, url: &str) -> Result<Option<SupportedMedia>, ReddSaverError> {
+    async fn gfy_to_mp4(&self, url: &str) -> Result<Option<SupportedMedia>, GertError> {
         let api_prefix =
             if url.contains(GFYCAT_DOMAIN) { GFYCAT_API_PREFIX } else { REDGIFS_API_PREFIX };
         let maybe_media_id = url.split("/").last();
@@ -449,7 +449,7 @@ impl<'a> Downloader<'a> {
     }
 
 // Get reddit video information and optionally the audio track if it exists
-    async fn get_reddit_video(&self, url: &str) -> Result<Option<SupportedMedia>, ReddSaverError> {
+    async fn get_reddit_video(&self, url: &str) -> Result<Option<SupportedMedia>, GertError> {
         let maybe_dash_video = url.split("/").last();
         if let Some(dash_video) = maybe_dash_video {
             let present = dash_video.contains("DASH");
@@ -508,7 +508,7 @@ impl<'a> Downloader<'a> {
     }
 
     /// Check if a particular URL contains supported media.
-    async fn get_media(&self, data: &PostData) -> Result<Vec<SupportedMedia>, ReddSaverError> {
+    async fn get_media(&self, data: &PostData) -> Result<Vec<SupportedMedia>, GertError> {
         let original = data.url.as_ref().unwrap();
         let mut media: Vec<SupportedMedia> = Vec::new();
 

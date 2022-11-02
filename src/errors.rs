@@ -4,7 +4,7 @@ use thiserror::Error;
 
 #[allow(dead_code)]
 #[derive(Error, Debug)]
-pub enum ReddSaverError {
+pub enum GertError {
     #[error("Missing environment variable")]
     EnvVarNotPresent(#[from] std::env::VarError),
     #[error("Unable to process request")]

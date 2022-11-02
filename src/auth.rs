@@ -1,4 +1,4 @@
-use crate::errors::ReddSaverError;
+use crate::errors::GertError;
 
 use log::debug;
 use reqwest::header::AUTHORIZATION;
@@ -48,7 +48,7 @@ impl<'a> Client<'a> {
         }
     }
 
-    pub async fn login(&self) -> Result<Auth, ReddSaverError> {
+    pub async fn login(&self) -> Result<Auth, GertError> {
         let basic_token = base64::encode(format!("{}:{}", self.client_id, self.client_secret));
         let grant_type = String::from("password");
 

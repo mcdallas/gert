@@ -1,5 +1,5 @@
 use reqwest::Client;
-use crate::errors::ReddSaverError;
+use crate::errors::GertError;
 use crate::structures::Listing;
 
 
@@ -27,7 +27,7 @@ impl Subreddit {
         ty: &str,
         limit: u32,
         options: Option<&str>,
-    ) -> Result<Listing, ReddSaverError> {
+    ) -> Result<Listing, GertError> {
         let url = &mut format!("{}/{}.json?limit={}", self.url, ty, limit);
 
         if let Some(period) = options {
@@ -49,7 +49,7 @@ impl Subreddit {
         &self,
         limit: u32,
         options: Option<&str>,
-    ) -> Result<Listing, ReddSaverError> {
+    ) -> Result<Listing, GertError> {
         self.get_feed("hot", limit, options).await
     }
 
@@ -59,7 +59,7 @@ impl Subreddit {
         &self,
         limit: u32,
         options: Option<&str>,
-    ) -> Result<Listing, ReddSaverError> {
+    ) -> Result<Listing, GertError> {
         self.get_feed("rising", limit, options).await
     }
 
@@ -69,7 +69,7 @@ impl Subreddit {
         &self,
         limit: u32,
         options: Option<&str>,
-    ) -> Result<Listing, ReddSaverError> {
+    ) -> Result<Listing, GertError> {
         self.get_feed("top", limit, options).await
     }
 
@@ -79,7 +79,7 @@ impl Subreddit {
         &self,
         limit: u32,
         options: Option<&str>,
-    ) -> Result<Listing, ReddSaverError> {
+    ) -> Result<Listing, GertError> {
         self.get_feed("new", limit, options).await
     }
 
