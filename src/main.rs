@@ -203,7 +203,6 @@ async fn main() -> Result<(), ReddSaverError> {
     let downloader = Downloader::new(
         &listings,
         &data_directory,
-        &subreddits,
         should_download,
         use_human_readable,
         ffmpeg_available,

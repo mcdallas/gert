@@ -83,7 +83,6 @@ struct SupportedMedia {
 pub struct Downloader<'a> {
     listing: &'a Vec<Listing>,
     data_directory: &'a str,
-    subreddits: &'a Vec<&'a str>,
     should_download: bool,
     use_human_readable: bool,
     ffmpeg_available: bool,
@@ -94,7 +93,6 @@ impl<'a> Downloader<'a> {
     pub fn new(
         listing: &'a Vec<Listing>,
         data_directory: &'a str,
-        subreddits: &'a Vec<&'a str>,
         should_download: bool,
         use_human_readable: bool,
         ffmpeg_available: bool,
@@ -104,7 +102,6 @@ impl<'a> Downloader<'a> {
         Downloader {
             listing,
             data_directory,
-            subreddits,
             should_download,
             use_human_readable,
             ffmpeg_available,
