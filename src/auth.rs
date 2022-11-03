@@ -16,7 +16,7 @@ pub struct Client<'a> {
     /// Login password
     password: &'a str,
     /// Reqwest client
-    session: &'a reqwest::Client
+    session: &'a reqwest::Client,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -44,7 +44,7 @@ impl<'a> Client<'a> {
             client_secret: &secret,
             username: &username,
             password: &password,
-            session: &session
+            session: &session,
         }
     }
 
@@ -57,7 +57,8 @@ impl<'a> Client<'a> {
         body.insert("password", self.password);
         body.insert("grant_type", &grant_type);
 
-        let auth = self.session
+        let auth = self
+            .session
             .post("https://www.reddit.com/api/v1/access_token")
             // base64 encoded <clientID>:<clientSecret> should be sent as a basic token
             // along with the body of the message

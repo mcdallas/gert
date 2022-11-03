@@ -1,9 +1,9 @@
 use crate::errors::GertError;
 use mime::Mime;
 use reqwest::header::CONTENT_TYPE;
+use std::env;
 use std::path::Path;
 use std::str::FromStr;
-use std::env;
 use which::which;
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -80,10 +80,5 @@ pub fn parse_env_file(path: &str) -> Result<UserEnv, GertError> {
     let username = env::var("USERNAME")?;
     let password = env::var("PASSWORD")?;
 
-    Ok(UserEnv {
-        username,
-        password,
-        client_id,
-        client_secret,
-    })
+    Ok(UserEnv { username, password, client_id, client_secret })
 }

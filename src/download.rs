@@ -1,5 +1,4 @@
 use std::borrow::Borrow;
-use std::fmt::format;
 use std::fs::File;
 use std::path::Path;
 use std::process::Command;
@@ -15,7 +14,7 @@ use url::{Position, Url};
 
 use crate::errors::GertError;
 use crate::structures::{GfyData, PostData};
-use crate::structures::{Summary, Post};
+use crate::structures::{Post, Summary};
 use crate::utils::{check_path_present, check_url_is_mp4};
 
 static JPG_EXTENSION: &str = "jpg";
@@ -96,7 +95,6 @@ impl<'a> Downloader<'a> {
         use_human_readable: bool,
         ffmpeg_available: bool,
         session: &'a reqwest::Client,
-
     ) -> Downloader<'a> {
         Downloader {
             posts,
@@ -123,10 +121,7 @@ impl<'a> Downloader<'a> {
     }
 
     /// Download and save medias from Reddit in parallel
-    async fn download_collection(
-        &self,
-        collection: &Vec<Post>,
-    ) -> Result<Summary, GertError> {
+    async fn download_collection(&self, collection: &Vec<Post>) -> Result<Summary, GertError> {
         let summary = Arc::new(Mutex::new(Summary {
             media_supported: 0,
             media_downloaded: 0,
@@ -323,10 +318,7 @@ impl<'a> Downloader<'a> {
             // name irrespective of how many times it's run. If run more than once, the
             // media is overwritten by this method
             let hash = md5::compute(url);
-            format!(
-                "{}/{}/{:x}.{}",
-                self.data_directory, subreddit, hash, extension
-            )
+            format!("{}/{}/{:x}.{}", self.data_directory, subreddit, hash, extension)
         } else {
             let canonical_title: String = title
                 .to_lowercase()
@@ -362,8 +354,7 @@ impl<'a> Downloader<'a> {
         };
     }
 
-
-/// Helper function that downloads and saves a single media from Reddit or Imgur
+    /// Helper function that downloads and saves a single media from Reddit or Imgur
     async fn save_or_skip(&self, url: &str, file_name: &str) -> Result<MediaStatus, GertError> {
         if check_path_present(&file_name) {
             debug!("Media from url {} already downloaded. Skipping...", url);
@@ -378,7 +369,7 @@ impl<'a> Downloader<'a> {
         }
     }
 
-/// Download media from the given url and save to data directory. Also create data directory if not present already
+    /// Download media from the given url and save to data directory. Also create data directory if not present already
     async fn download_media(&self, file_name: &str, url: &str) -> Result<bool, GertError> {
         // create directory if it does not already exist
         // the directory is created relative to the current working directory
@@ -388,11 +379,8 @@ impl<'a> Downloader<'a> {
             Ok(_) => (),
             Err(_e) => return Err(GertError::CouldNotCreateDirectory),
         }
-        
-        let maybe_response = self.session
-            .get(url)
-            .send()
-            .await;
+
+        let maybe_response = self.session.get(url).send().await;
         if let Ok(response) = maybe_response {
             debug!("URL Response: {:#?}", response);
             let maybe_data = response.bytes().await;
@@ -422,7 +410,7 @@ impl<'a> Downloader<'a> {
         Ok(status)
     }
 
-/// Convert Gfycat/Redgifs GIFs into mp4 URLs for download
+    /// Convert Gfycat/Redgifs GIFs into mp4 URLs for download
     async fn gfy_to_mp4(&self, url: &str) -> Result<Option<SupportedMedia>, GertError> {
         let api_prefix =
             if url.contains(GFYCAT_DOMAIN) { GFYCAT_API_PREFIX } else { REDGIFS_API_PREFIX };
@@ -433,9 +421,7 @@ impl<'a> Downloader<'a> {
             debug!("GFY API URL: {}", api_url);
 
             // talk to gfycat API and get GIF information
-            let response = self.session.get(&api_url)
-                .send()
-                .await?;
+            let response = self.session.get(&api_url).send().await?;
             // if the gif is not available anymore, Gfycat might send
             // a 404 response. Proceed to get the mp4 URL only if the
             // response was HTTP 200
@@ -454,7 +440,7 @@ impl<'a> Downloader<'a> {
         }
     }
 
-// Get reddit video information and optionally the audio track if it exists
+    // Get reddit video information and optionally the audio track if it exists
     async fn get_reddit_video(&self, url: &str) -> Result<Option<SupportedMedia>, GertError> {
         let maybe_dash_video = url.split("/").last();
         if let Some(dash_video) = maybe_dash_video {
@@ -568,7 +554,9 @@ impl<'a> Downloader<'a> {
                         if let Some(v) = &m.reddit_video {
                             let fallback_url =
                                 String::from(&v.fallback_url).replace("?source=fallback", "");
-                            if let Some(supported_media) = self.get_reddit_video(&fallback_url).await? {
+                            if let Some(supported_media) =
+                                self.get_reddit_video(&fallback_url).await?
+                            {
                                 media.push(supported_media);
                             }
                         }
@@ -589,8 +577,10 @@ impl<'a> Downloader<'a> {
                         );
                         image_urls.push(image_url);
                     }
-                    let supported_media =
-                        SupportedMedia { components: image_urls, media_type: MediaType::RedditImage };
+                    let supported_media = SupportedMedia {
+                        components: image_urls,
+                        media_type: MediaType::RedditImage,
+                    };
                     media.push(supported_media);
                 }
             }

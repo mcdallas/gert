@@ -9,22 +9,21 @@ use auth::Client;
 use crate::download::Downloader;
 use crate::errors::GertError;
 use crate::errors::GertError::DataDirNotFound;
+use crate::structures::Post;
+use crate::subreddit::Subreddit;
 use crate::user::User;
 use crate::utils::*;
-use crate::subreddit::Subreddit;
-use crate::structures::Post;
 
 mod auth;
 mod download;
 mod errors;
 mod structures;
+mod subreddit;
 mod user;
 mod utils;
-mod subreddit;
 
 #[tokio::main]
 async fn main() -> Result<(), GertError> {
-    
     let matches = App::new("Gert")
         .version(crate_version!())
         .author("Mike Dallas")
@@ -35,7 +34,7 @@ async fn main() -> Result<(), GertError> {
                 .long("from-env")
                 .value_name("ENV_FILE")
                 .help("Set a custom .env style file with secrets")
-                .takes_value(true)
+                .takes_value(true),
         )
         .arg(
             Arg::with_name("match")
@@ -92,7 +91,7 @@ async fn main() -> Result<(), GertError> {
                 .value_delimiter(",")
                 .help("Download media from these subreddit")
                 .takes_value(true)
-                .required(true)
+                .required(true),
         )
         .arg(
             Arg::with_name("period")
@@ -102,7 +101,7 @@ async fn main() -> Result<(), GertError> {
                 .help("Time period to download from")
                 .takes_value(true)
                 .possible_values(&["now", "hour", "day", "week", "month", "year", "all"])
-                .default_value("day")
+                .default_value("day"),
         )
         .arg(
             Arg::with_name("feed")
@@ -112,7 +111,7 @@ async fn main() -> Result<(), GertError> {
                 .help("Feed to download from")
                 .takes_value(true)
                 .possible_values(&["hot", "new", "top", "rising"])
-                .default_value("hot")
+                .default_value("hot"),
         )
         .get_matches();
 
@@ -133,14 +132,13 @@ async fn main() -> Result<(), GertError> {
         Some(pattern) => regex::Regex::new(pattern).expect("Invalid regex pattern"),
         None => regex::Regex::new(".*").unwrap(),
     };
-    
+
     // initialize logger for the app and set logging level to info if no environment variable present
     let env = Env::default().filter("RS_LOG").default_filter_or("info");
     env_logger::Builder::from_env(env).init();
 
-        // if the option is --debug, show the configuration and return immediately
+    // if the option is --debug, show the configuration and return immediately
     if matches.is_present("debug") {
-
         info!("Current configuration:");
         info!("ENVIRONMENT_FILE = {}", &env_file.unwrap_or("None"));
         info!("DATA_DIRECTORY = {}", &data_directory);
@@ -172,27 +170,32 @@ async fn main() -> Result<(), GertError> {
     }
 
     let session = match env_file {
-
         Some(envfile) => {
             let user_env = parse_env_file(envfile)?;
 
             let client_sess = reqwest::Client::builder()
-            .cookie_store(true)
-            .user_agent(get_user_agent_string(&user_env.username))
-            .build()?;
-    
-            let client = Client::new(&user_env.client_id, &user_env.client_secret, &user_env.username, &user_env.password, &client_sess);
+                .cookie_store(true)
+                .user_agent(get_user_agent_string(&user_env.username))
+                .build()?;
+
+            let client = Client::new(
+                &user_env.client_id,
+                &user_env.client_secret,
+                &user_env.username,
+                &user_env.password,
+                &client_sess,
+            );
             // login to reddit using the credentials provided and get API bearer token
             let auth = client.login().await?;
-          
+
             info!("Successfully logged in to Reddit as {}", user_env.username);
             debug!("Authentication details: {:#?}", auth);
-        
+
             // get information about the user to display
             let user = User::new(&auth, &user_env.username, &client_sess);
-    
+
             let user_info = user.about().await?;
-    
+
             info!("The user details are: ");
             info!("Account name: {:#?}", user_info.data.name);
             info!("Account ID: {:#?}", user_info.data.id);
@@ -200,19 +203,15 @@ async fn main() -> Result<(), GertError> {
             info!("Link Karma: {:#?}", user_info.data.link_karma);
 
             client_sess
-
-        },
+        }
         None => {
             info!("No environment file provided, using default values");
             reqwest::Client::builder()
-            .cookie_store(true)
-            .user_agent(get_user_agent_string("anon"))
-            .build()?
+                .cookie_store(true)
+                .user_agent(get_user_agent_string("anon"))
+                .build()?
         }
     };
-
-
-
 
     if !check_path_present(&data_directory) {
         return Err(DataDirNotFound);
@@ -224,8 +223,7 @@ async fn main() -> Result<(), GertError> {
             Videos hosted by Reddit use separate video and audio streams. \
             Ffmpeg needs be installed to combine the audio and video into a single mp4."
         );
-    }
-    ;
+    };
 
     info!("Starting data gathering from Reddit. This might take some time. Hold on....");
 
@@ -233,10 +231,9 @@ async fn main() -> Result<(), GertError> {
     for subreddit in &subreddits {
         let listing = Subreddit::new(subreddit).get_feed(feed, limit, period).await?;
         posts.extend(
-            listing.data.children
-            .into_iter()
-            .filter(|post| post.data.url.is_some())
-            .filter(|post| pattern.is_match(post.data.title.as_ref().unwrap_or(&"".to_string())))
+            listing.data.children.into_iter().filter(|post| post.data.url.is_some()).filter(
+                |post| pattern.is_match(post.data.title.as_ref().unwrap_or(&"".to_string())),
+            ),
         );
     }
 

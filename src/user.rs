@@ -40,7 +40,8 @@ impl<'a> User<'a> {
         // all API requests that use a bearer token should be made to oauth.reddit.com instead
         let url = format!("https://oauth.reddit.com/user/{}/about", self.name);
 
-        let response = self.session
+        let response = self
+            .session
             .get(&url)
             .bearer_auth(&self.auth.access_token)
             // reddit will forbid you from accessing the API if the provided user agent is not unique
@@ -55,11 +56,7 @@ impl<'a> User<'a> {
     }
 
     #[allow(dead_code)]
-    pub async fn listing(
-        &self,
-        listing_type: &ListingType,
-    ) -> Result<Vec<Listing>, GertError> {
-
+    pub async fn listing(&self, listing_type: &ListingType) -> Result<Vec<Listing>, GertError> {
         let mut complete = false;
         let mut processed = 0;
         let mut after: Option<String> = None;
@@ -79,7 +76,8 @@ impl<'a> User<'a> {
                 )
             };
 
-            let response = self.session
+            let response = self
+                .session
                 .get(&url)
                 .bearer_auth(&self.auth.access_token)
                 // the maximum number of items returned by the API in a single request is 100
@@ -109,5 +107,4 @@ impl<'a> User<'a> {
 
         Ok(listing)
     }
-
 }
