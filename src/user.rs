@@ -66,12 +66,12 @@ impl<'a> User<'a> {
             // in subsequent calls, we use the value for after from the response of the
             //  previous request and continue doing so till the value of after is null
             let url = if processed == 0 {
-                format!("https://oauth.reddit.com/user/{}/{}", self.name, listing_type.to_string())
+                format!("https://oauth.reddit.com/user/{}/{}", self.name, listing_type)
             } else {
                 format!(
                     "https://oauth.reddit.com/user/{}/{}?after={}",
                     self.name,
-                    listing_type.to_string(),
+                    listing_type,
                     after.as_ref().unwrap()
                 )
             };

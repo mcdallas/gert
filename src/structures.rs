@@ -164,7 +164,7 @@ pub struct GfyItem {
     pub mp4_url: String,
 }
 
-#[derive(Debug, Copy, Clone, PartialEq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct Summary {
     /// Number of media downloaded
     pub media_downloaded: i32,

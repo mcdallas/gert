@@ -40,11 +40,11 @@ impl<'a> Client<'a> {
         session: &'a reqwest::Client,
     ) -> Self {
         Self {
-            client_id: &id,
-            client_secret: &secret,
-            username: &username,
-            password: &password,
-            session: &session,
+            client_id: id,
+            client_secret: secret,
+            username,
+            password,
+            session,
         }
     }
 

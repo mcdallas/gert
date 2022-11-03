@@ -129,7 +129,7 @@ impl<'a> Downloader<'a> {
         }));
 
         collection
-            .into_iter()
+            .iter()
             .map(|item| {
                 let summary_arc = summary.clone();
                 // since the latency for downloading an media from the network is unpredictable
@@ -160,7 +160,7 @@ impl<'a> Downloader<'a> {
                                 let mut full_url = Url::parse(url).unwrap();
                                 full_url.set_query(None);
                                 let clean_url = full_url.to_string();
-                                String::from(clean_url.split('.').last().unwrap_or("unknown")).replace("/", "_")
+                                String::from(clean_url.split('.').last().unwrap_or("unknown")).replace('/', "_")
                             };
 
                             // if the media is a reddit video, they have separate audio and video components.
@@ -178,11 +178,11 @@ impl<'a> Downloader<'a> {
                                 extension = format!("{}.{}", extension, "mp4");
                             }
                             let file_name = self.generate_file_name(
-                                &url,
-                                &subreddit,
+                                url,
+                                subreddit,
                                 &extension,
-                                &post_name,
-                                &post_title,
+                                post_name,
+                                post_title,
                                 &item_index,
                             );
 
@@ -224,10 +224,10 @@ impl<'a> Downloader<'a> {
                                 // this file name is used for saving the ffmpeg combined file
                                 let combined_file_name = self.generate_file_name(
                                     first_url,
-                                    &subreddit,
+                                    subreddit,
                                     &extension,
-                                    &post_name,
-                                    &post_title,
+                                    post_name,
+                                    post_title,
                                     "0",
                                 );
 
@@ -265,10 +265,10 @@ impl<'a> Downloader<'a> {
                                         // if we encountered an error, we will write logs from ffmpeg into a new log file
                                         let log_file_name = self.generate_file_name(
                                             first_url,
-                                            &subreddit,
+                                            subreddit,
                                             "log",
-                                            &post_name,
-                                            &post_title,
+                                            post_name,
+                                            post_title,
                                             "0",
                                         );
                                         let err = String::from_utf8(output.stderr).unwrap();
@@ -346,7 +346,7 @@ impl<'a> Downloader<'a> {
             // note that the name of the post is something of the form t3_<randomstring>
             let canonical_name: String =
                 if index == "0" { String::from(name) } else { format!("{}_{}", name, index) }
-                    .replace(".", "_");
+                    .replace('.', "_");
             format!(
                 "{}/{}/{}_{}.{}",
                 self.data_directory, subreddit, canonical_title, canonical_name, extension
@@ -356,11 +356,11 @@ impl<'a> Downloader<'a> {
 
     /// Helper function that downloads and saves a single media from Reddit or Imgur
     async fn save_or_skip(&self, url: &str, file_name: &str) -> Result<MediaStatus, GertError> {
-        if check_path_present(&file_name) {
+        if check_path_present(file_name) {
             debug!("Media from url {} already downloaded. Skipping...", url);
             Ok(MediaStatus::Skipped)
         } else {
-            let save_status = self.download_media(&file_name, &url).await?;
+            let save_status = self.download_media(file_name, url).await?;
             if save_status {
                 Ok(MediaStatus::Downloaded)
             } else {
@@ -414,7 +414,7 @@ impl<'a> Downloader<'a> {
     async fn gfy_to_mp4(&self, url: &str) -> Result<Option<SupportedMedia>, GertError> {
         let api_prefix =
             if url.contains(GFYCAT_DOMAIN) { GFYCAT_API_PREFIX } else { REDGIFS_API_PREFIX };
-        let maybe_media_id = url.split("/").last();
+        let maybe_media_id = url.split('/').last();
 
         if let Some(media_id) = maybe_media_id {
             let api_url = format!("{}/{}", api_prefix, media_id);
@@ -442,7 +442,7 @@ impl<'a> Downloader<'a> {
 
     // Get reddit video information and optionally the audio track if it exists
     async fn get_reddit_video(&self, url: &str) -> Result<Option<SupportedMedia>, GertError> {
-        let maybe_dash_video = url.split("/").last();
+        let maybe_dash_video = url.split('/').last();
         if let Some(dash_video) = maybe_dash_video {
             let present = dash_video.contains("DASH");
             // todo: find exhaustive collection of these, or figure out if they are (x, x*2) pairs
@@ -455,7 +455,7 @@ impl<'a> Downloader<'a> {
                     };
                     Ok(Some(supported_media))
                 } else {
-                    let all = url.split("/").collect::<Vec<&str>>();
+                    let all = url.split('/').collect::<Vec<&str>>();
                     let mut result = all.split_last().unwrap().1.to_vec();
                     let dash_audio = "DASH_audio.mp4";
                     result.push(dash_audio);
@@ -637,7 +637,7 @@ impl<'a> Downloader<'a> {
                     // if the link points to the giphy post rather than the media link,
                     // use the scheme below to get the actual URL for the gif.
                     let path = &parsed[Position::AfterHost..Position::AfterPath];
-                    let media_id = path.split("-").last().unwrap();
+                    let media_id = path.split('-').last().unwrap();
                     let supported_media = SupportedMedia {
                         components: vec![format!(
                             "https://{}/media/{}.gif",
