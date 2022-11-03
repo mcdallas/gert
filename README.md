@@ -1,6 +1,7 @@
 # Gert
 
-* Command line tool to download media from Reddit
+A command line tool to download media from Reddit
+
 * Supports:
   - Reddit: PNG/JPG images, GIFs, Image galleries, videos
   - Giphy: GIFs
@@ -18,16 +19,57 @@ Follow this [link](https://www.ffmpeg.org/download.html) for installation instru
 
 #### Using cargo
 
-If you already have Rust installed, you can also install using `cargo`: 
+If you already have Rust installed, you can install using `cargo`: 
 ```shell script
 cargo install gert
 ```
 
 ## Running
 
+Simply pass the names of the subreddits you want to download media from with (multiple) `-s` flags
+
+```bash
+gert -s wallpapers -s earthporn
+```
+
+
+
+## Command line options
+
+```bash
+Simple CLI tool to download media from Reddit
+
+USAGE:
+    gert [FLAGS] [OPTIONS] --subreddit <SUBREDDIT>...
+
+FLAGS:
+        --debug             Show the current config being used
+    -r, --dry-run           Dry run and print the URLs of saved media to download
+    -h, --help              Prints help information
+    -H, --human-readable    Use human readable names for files
+    -V, --version           Prints version information
+
+OPTIONS:
+    -e, --from-env <ENV_FILE>         Set a custom .env style file with secrets
+    -f, --feed <feed>                 Feed to download from [default: hot]  [possible values: hot, new, top, rising]
+    -l, --limit <LIMIT>               Limit the number of posts to download [default: 25]
+    -m, --match <MATCH>               Pass a regex expresion to filter the title of the post
+    -o, --output <DATA_DIR>           Directory to save the media to [default: .]
+    -p, --period <PERIOD>             Time period to download from [default: day]  [possible values: now, hour, day, week, month, year, all]
+    -s, --subreddit <SUBREDDIT>...    Download media from these subreddit
+```
+
+
+
+### Authenticating with Reddit
+
+Authentication is not required but if you want a more generous rate limit you can create a new app in reddit and pass your credentials to gert
+
+
+
 1. Create a new script application at https://www.reddit.com/prefs/apps
     * Click on create an app at the bottom of the page
-    * Input a name for your application, for example: <username>-gert
+    * Input a name for your application, for example: `gert`
     * Choose "script" as the type of application
     * Set "http://localhost:8080" or any other URL for the redirect url
     * Click on "create app" - you should now see the application has been created
@@ -42,3 +84,9 @@ USERNAME="<username>"
 PASSWORD="<password>"
 ```
 _NOTE_: If you have 2FA enabled, please make sure you set `PASSWORD=<password>:<2FA_TOTP_token>` instead
+
+
+
+### Credits
+
+based on https://github.com/manojkarthick/reddsaver
