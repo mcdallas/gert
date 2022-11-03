@@ -1,4 +1,5 @@
 use std::borrow::Borrow;
+use std::fmt::format;
 use std::fs::File;
 use std::path::Path;
 use std::process::Command;
@@ -178,8 +179,8 @@ impl<'a> Downloader<'a> {
                             // explicitly adding an mp4 extension to make it easy to recognize in the finder
                             if (media_type == MediaType::RedditVideoWithoutAudio
                                 || media_type == MediaType::RedditVideoWithAudio)
-                                && !extension.ends_with(".mp4") {
-                                extension = format!("{}.{}", extension, ".mp4");
+                                && !extension.ends_with("mp4") {
+                                extension = format!("{}.{}", extension, "mp4");
                             }
                             let file_name = self.generate_file_name(
                                 &url,
@@ -256,6 +257,12 @@ impl<'a> Downloader<'a> {
                                     // check the status code of the ffmpeg command. if the command is unsuccessful,
                                     // display the error and skip combining the media.
                                     if output.status.success() {
+
+                                        for media_file in &media_files {
+                                            // Cleanup the files with the single stream components
+                                            fs::remove_file(media_file)?;
+                                        }
+
                                         debug!("Successfully combined into temporary file: {:?}", temporary_file_name);
                                         debug!("Renaming file: {} -> {}", temporary_file_name.display(), combined_file_name);
                                         fs::rename(&temporary_file_name, &combined_file_name)?;
@@ -317,8 +324,7 @@ impl<'a> Downloader<'a> {
             // media is overwritten by this method
             let hash = md5::compute(url);
             format!(
-                // TODO: Fixme, use appropriate prefix
-                "{}/{}/img-{:x}.{}",
+                "{}/{}/{:x}.{}",
                 self.data_directory, subreddit, hash, extension
             )
         } else {
