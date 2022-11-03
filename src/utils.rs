@@ -65,3 +65,25 @@ pub async fn check_url_is_mp4(url: &str) -> Result<Option<bool>, GertError> {
         }
     }
 }
+
+pub struct UserEnv {
+    pub username: String,
+    pub password: String,
+    pub client_id: String,
+    pub client_secret: String,
+}
+
+pub fn parse_env_file(path: &str) -> Result<UserEnv, GertError> {
+    dotenv::from_filename(path).ok();
+    let client_id = env::var("CLIENT_ID")?;
+    let client_secret = env::var("CLIENT_SECRET")?;
+    let username = env::var("USERNAME")?;
+    let password = env::var("PASSWORD")?;
+
+    Ok(UserEnv {
+        username,
+        password,
+        client_id,
+        client_secret,
+    })
+}

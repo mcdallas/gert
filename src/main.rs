@@ -27,16 +27,15 @@ async fn main() -> Result<(), GertError> {
     
     let matches = App::new("Gert")
         .version(crate_version!())
-        .author("Manoj Karthick Selva Kumar")
-        .about("Simple CLI tool to download saved media from Reddit")
+        .author("Mike Dallas")
+        .about("Simple CLI tool to download media from Reddit")
         .arg(
             Arg::with_name("environment")
                 .short("e")
                 .long("from-env")
                 .value_name("ENV_FILE")
                 .help("Set a custom .env style file with secrets")
-                .default_value(".env")
-                .takes_value(true),
+                .takes_value(true)
         )
         .arg(
             Arg::with_name("match")
@@ -117,7 +116,7 @@ async fn main() -> Result<(), GertError> {
         )
         .get_matches();
 
-    let env_file = matches.value_of("environment").unwrap();
+    let env_file = matches.value_of("environment");
     let data_directory = String::from(matches.value_of("output_directory").unwrap());
     // generate the URLs to download from without actually downloading the media
     let should_download = !matches.is_present("dry_run");
@@ -135,33 +134,33 @@ async fn main() -> Result<(), GertError> {
         None => regex::Regex::new(".*").unwrap(),
     };
     
-    // initialize environment from the .env file
-    dotenv::from_filename(env_file).ok();
-
     // initialize logger for the app and set logging level to info if no environment variable present
     let env = Env::default().filter("RS_LOG").default_filter_or("info");
     env_logger::Builder::from_env(env).init();
 
-    let client_id = env::var("CLIENT_ID")?;
-    let client_secret = env::var("CLIENT_SECRET")?;
-    let username = env::var("USERNAME")?;
-    let password = env::var("PASSWORD")?;
-    let user_agent = get_user_agent_string(&username);
-
-    if !check_path_present(&data_directory) {
-        return Err(DataDirNotFound);
-    }
-
-    // if the option is show-config, show the configuration and return immediately
+        // if the option is --debug, show the configuration and return immediately
     if matches.is_present("debug") {
+
         info!("Current configuration:");
-        info!("ENVIRONMENT_FILE = {}", &env_file);
+        info!("ENVIRONMENT_FILE = {}", &env_file.unwrap_or("None"));
         info!("DATA_DIRECTORY = {}", &data_directory);
-        info!("CLIENT_ID = {}", &client_id);
-        info!("CLIENT_SECRET = {}", mask_sensitive(&client_secret));
-        info!("USERNAME = {}", &username);
-        info!("PASSWORD = {}", mask_sensitive(&password));
-        info!("USER_AGENT = {}", &user_agent);
+        if let Some(envfile) = env_file {
+            let maybe_userenv = parse_env_file(envfile);
+            match maybe_userenv {
+                Ok(userenv) => {
+                    info!("CLIENT_ID = {}", &userenv.client_id);
+                    info!("CLIENT_SECRET = {}", mask_sensitive(&userenv.client_secret));
+                    info!("USERNAME = {}", &userenv.username);
+                    info!("PASSWORD = {}", mask_sensitive(&userenv.password));
+                    info!("USER_AGENT = {}", get_user_agent_string(&userenv.username));
+                }
+                Err(e) => {
+                    warn!("Error parsing environment file: {}", e);
+                }
+            }
+        } else {
+            info!("USER_AGENT = {}", get_user_agent_string("anon"));
+        }
         info!("SUBREDDITS = {}", &subreddits.join(","));
         info!("FFMPEG AVAILABLE = {}", ffmpeg_available);
         info!("LIMIT = {}", limit);
@@ -172,6 +171,53 @@ async fn main() -> Result<(), GertError> {
         return Ok(());
     }
 
+    let session = match env_file {
+
+        Some(envfile) => {
+            let user_env = parse_env_file(envfile)?;
+
+            let client_sess = reqwest::Client::builder()
+            .cookie_store(true)
+            .user_agent(get_user_agent_string(&user_env.username))
+            .build()?;
+    
+            let client = Client::new(&user_env.client_id, &user_env.client_secret, &user_env.username, &user_env.password, &client_sess);
+            // login to reddit using the credentials provided and get API bearer token
+            let auth = client.login().await?;
+          
+            info!("Successfully logged in to Reddit as {}", user_env.username);
+            debug!("Authentication details: {:#?}", auth);
+        
+            // get information about the user to display
+            let user = User::new(&auth, &user_env.username, &client_sess);
+    
+            let user_info = user.about().await?;
+    
+            info!("The user details are: ");
+            info!("Account name: {:#?}", user_info.data.name);
+            info!("Account ID: {:#?}", user_info.data.id);
+            info!("Comment Karma: {:#?}", user_info.data.comment_karma);
+            info!("Link Karma: {:#?}", user_info.data.link_karma);
+
+            client_sess
+
+        },
+        None => {
+            info!("No environment file provided, using default values");
+            reqwest::Client::builder()
+            .cookie_store(true)
+            .user_agent(get_user_agent_string("anon"))
+            .build()?
+        }
+    };
+
+
+
+
+    if !check_path_present(&data_directory) {
+        return Err(DataDirNotFound);
+    }
+
     if !ffmpeg_available {
         warn!(
             "No ffmpeg Installation available. \
@@ -180,29 +226,6 @@ async fn main() -> Result<(), GertError> {
         );
     }
     ;
-    let session = reqwest::Client::builder()
-        .cookie_store(true)
-        .user_agent(get_user_agent_string(&username))
-        .build()?;
-
-
-    let client = Client::new(&client_id, &client_secret, &username, &password, &session);
-    // login to reddit using the credentials provided and get API bearer token
-    let auth =
-        client.login().await?;
-  
-    info!("Successfully logged in to Reddit as {}", username);
-    debug!("Authentication details: {:#?}", auth);
-
-    // get information about the user to display
-    let user = User::new(&auth, &username, &session);
-
-    let user_info = user.about().await?;
-    info!("The user details are: ");
-    info!("Account name: {:#?}", user_info.data.name);
-    info!("Account ID: {:#?}", user_info.data.id);
-    info!("Comment Karma: {:#?}", user_info.data.comment_karma);
-    info!("Link Karma: {:#?}", user_info.data.link_karma);
 
     info!("Starting data gathering from Reddit. This might take some time. Hold on....");
 
