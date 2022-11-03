@@ -1,7 +1,7 @@
-use std::fmt::Write;
 use crate::errors::GertError;
 use crate::structures::Listing;
 use reqwest::Client;
+use std::fmt::Write;
 
 pub struct Subreddit {
     /// Name of subreddit.

@@ -186,7 +186,7 @@ impl<'a> Downloader<'a> {
                                 &item_index,
                             );
 
-                            if self.should_download {                                
+                            if self.should_download {
                                 let status = self.save_or_skip(url, &file_name);
                                 // update the summary statistics based on the status
                                 match status.await? {

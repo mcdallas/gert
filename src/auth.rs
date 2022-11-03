@@ -39,13 +39,7 @@ impl<'a> Client<'a> {
         password: &'a str,
         session: &'a reqwest::Client,
     ) -> Self {
-        Self {
-            client_id: id,
-            client_secret: secret,
-            username,
-            password,
-            session,
-        }
+        Self { client_id: id, client_secret: secret, username, password, session }
     }
 
     pub async fn login(&self) -> Result<Auth, GertError> {
