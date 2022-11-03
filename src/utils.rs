@@ -40,11 +40,7 @@ pub fn mask_sensitive(word: &str) -> String {
 
 /// Check if the given application is present in the $PATH
 pub fn application_present(name: String) -> bool {
-    let result = which(name);
-    match result {
-        Ok(_) => true,
-        _ => false,
-    }
+    which(name).is_ok()
 }
 
 /// Check if the given URL contains an MP4 track using the content type

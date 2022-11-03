@@ -121,7 +121,7 @@ impl<'a> Downloader<'a> {
     }
 
     /// Download and save medias from Reddit in parallel
-    async fn download_collection(&self, collection: &Vec<Post>) -> Result<Summary, GertError> {
+    async fn download_collection(&self, collection: &[Post]) -> Result<Summary, GertError> {
         let summary = Arc::new(Mutex::new(Summary {
             media_supported: 0,
             media_downloaded: 0,

@@ -1,3 +1,4 @@
+use std::fmt::Write;
 use crate::errors::GertError;
 use crate::structures::Listing;
 use reqwest::Client;
@@ -26,7 +27,7 @@ impl Subreddit {
         let url = &mut format!("{}/{}.json?limit={}", self.url, ty, limit);
 
         if let Some(period) = options {
-            url.push_str(&format!("&t={}", period));
+            let _ = write!(url, "&t={}", period);
         }
 
         Ok(self.client.get(&url.to_owned()).send().await?.json::<Listing>().await?)
