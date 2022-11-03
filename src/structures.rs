@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::ops::Add;
+use std::{ops::Add, collections::HashMap};
 
 /// Data structure that represents a user's info
 #[derive(Debug, Serialize, Deserialize)]
@@ -107,12 +107,22 @@ pub struct PostData {
     pub title: Option<String>,
     /// A timestamp of the time when the post was created, in **UTC**.
     pub created_utc: Value,
+    /// Media Metadata
+    pub media_metadata: Option<HashMap<String, MediaMetadata>>,
     /// Gallery metadata
     pub gallery_data: Option<GalleryItems>,
     /// Is post a video?
     pub is_video: Option<bool>,
     /// Reddit Media info
     pub media: Option<PostMedia>,
+}
+
+#[derive(Deserialize, Debug, Clone)]
+pub struct MediaMetadata {
+    pub status: String,
+    pub e: String,
+    pub m: String,
+    pub id: String,
 }
 
 #[derive(Deserialize, Debug, Clone)]
@@ -132,7 +142,7 @@ pub struct GalleryItems {
     pub items: Vec<GalleryItem>,
 }
 
-#[derive(Deserialize, Debug, Clone)]
+#[derive(Deserialize, Debug, Serialize, Clone)]
 pub struct GalleryItem {
     /// The reddit media id, can be used to construct a redd.it URL
     pub media_id: String,

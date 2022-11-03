@@ -155,7 +155,7 @@ impl<'a> Downloader<'a> {
                         let mut local_skipped = 0;
                         for (index, url) in media_urls.iter().enumerate() {
                             let mut item_index = format!("{}", index);
-                            
+
                             let mut extension = {
                                 let mut full_url = Url::parse(url).unwrap();
                                 full_url.set_query(None);
@@ -186,7 +186,7 @@ impl<'a> Downloader<'a> {
                                 &item_index,
                             );
 
-                            if self.should_download {
+                            if self.should_download {                                
                                 let status = self.save_or_skip(url, &file_name);
                                 // update the summary statistics based on the status
                                 match status.await? {
@@ -501,6 +501,7 @@ impl<'a> Downloader<'a> {
 
     /// Check if a particular URL contains supported media.
     async fn get_media(&self, data: &PostData) -> Result<Vec<SupportedMedia>, GertError> {
+
         let original = data.url.as_ref().unwrap();
         let mut media: Vec<SupportedMedia> = Vec::new();
 
@@ -514,6 +515,7 @@ impl<'a> Downloader<'a> {
 
             let url = &parsed[..Position::AfterPath];
             let gallery_info = data.gallery_data.borrow();
+            let media_metadata = data.media_metadata.borrow();
 
             // reddit images and gifs
             if url.contains(REDDIT_IMAGE_SUBDOMAIN) {
@@ -570,10 +572,21 @@ impl<'a> Downloader<'a> {
                     // collect all the URLs for the images in the album
                     let mut image_urls = Vec::new();
                     for item in gallery.items.iter() {
+
+
+                        let mut ext = JPG_EXTENSION;
+                        if let Some(metadata) = media_metadata {
+                            if let Some(media) = metadata.get(&item.media_id) {
+                                ext = media.m.split('/').last().unwrap();                                
+                            }
+                        }
+
+
+
                         // extract the media ID from each gallery item and reconstruct the image URL
                         let image_url = format!(
                             "https://{}/{}.{}",
-                            REDDIT_IMAGE_SUBDOMAIN, item.media_id, JPG_EXTENSION
+                            REDDIT_IMAGE_SUBDOMAIN, item.media_id, ext
                         );
                         image_urls.push(image_url);
                     }
