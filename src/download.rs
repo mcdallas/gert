@@ -501,7 +501,6 @@ impl<'a> Downloader<'a> {
 
     /// Check if a particular URL contains supported media.
     async fn get_media(&self, data: &PostData) -> Result<Vec<SupportedMedia>, GertError> {
-
         let original = data.url.as_ref().unwrap();
         let mut media: Vec<SupportedMedia> = Vec::new();
 
@@ -572,22 +571,16 @@ impl<'a> Downloader<'a> {
                     // collect all the URLs for the images in the album
                     let mut image_urls = Vec::new();
                     for item in gallery.items.iter() {
-
-
                         let mut ext = JPG_EXTENSION;
                         if let Some(metadata) = media_metadata {
                             if let Some(media) = metadata.get(&item.media_id) {
-                                ext = media.m.split('/').last().unwrap();                                
+                                ext = media.m.split('/').last().unwrap();
                             }
                         }
 
-
-
                         // extract the media ID from each gallery item and reconstruct the image URL
-                        let image_url = format!(
-                            "https://{}/{}.{}",
-                            REDDIT_IMAGE_SUBDOMAIN, item.media_id, ext
-                        );
+                        let image_url =
+                            format!("https://{}/{}.{}", REDDIT_IMAGE_SUBDOMAIN, item.media_id, ext);
                         image_urls.push(image_url);
                     }
                     let supported_media = SupportedMedia {

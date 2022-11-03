@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::{ops::Add, collections::HashMap};
+use std::{collections::HashMap, ops::Add};
 
 /// Data structure that represents a user's info
 #[derive(Debug, Serialize, Deserialize)]

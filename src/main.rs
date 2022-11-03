@@ -128,20 +128,24 @@ async fn main() -> Result<(), GertError> {
     let limit = match matches.value_of("limit").unwrap().parse::<u32>() {
         Ok(limit) => limit,
         Err(_) => {
-            let err = clap::Error::with_description("Limit must be a number", clap::ErrorKind::InvalidValue);
+            let err = clap::Error::with_description(
+                "Limit must be a number",
+                clap::ErrorKind::InvalidValue,
+            );
             err.exit();
         }
     };
     let period = matches.value_of("period");
     let feed = matches.value_of("feed").unwrap();
     let pattern = match matches.value_of("match") {
-        Some(pattern) => {
-            match regex::Regex::new(pattern) {
-                Ok(reg) => reg,
-                Err(_) => {
-                    let err = clap::Error::with_description("Invalid regex pattern", clap::ErrorKind::InvalidValue);
-                    err.exit();
-                }
+        Some(pattern) => match regex::Regex::new(pattern) {
+            Ok(reg) => reg,
+            Err(_) => {
+                let err = clap::Error::with_description(
+                    "Invalid regex pattern",
+                    clap::ErrorKind::InvalidValue,
+                );
+                err.exit();
             }
         },
         None => regex::Regex::new(".*").unwrap(),
