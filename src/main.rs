@@ -125,11 +125,25 @@ async fn main() -> Result<(), GertError> {
     let use_human_readable = matches.is_present("human_readable");
     // restrict downloads to these subreddits
     let subreddits: Vec<&str> = matches.values_of("subreddits").unwrap().collect();
-    let limit = matches.value_of("limit").unwrap().parse::<u32>().expect("Limit must be a number");
+    let limit = match matches.value_of("limit").unwrap().parse::<u32>() {
+        Ok(limit) => limit,
+        Err(_) => {
+            let err = clap::Error::with_description("Limit must be a number", clap::ErrorKind::InvalidValue);
+            err.exit();
+        }
+    };
     let period = matches.value_of("period");
     let feed = matches.value_of("feed").unwrap();
     let pattern = match matches.value_of("match") {
-        Some(pattern) => regex::Regex::new(pattern).expect("Invalid regex pattern"),
+        Some(pattern) => {
+            match regex::Regex::new(pattern) {
+                Ok(reg) => reg,
+                Err(_) => {
+                    let err = clap::Error::with_description("Invalid regex pattern", clap::ErrorKind::InvalidValue);
+                    err.exit();
+                }
+            }
+        },
         None => regex::Regex::new(".*").unwrap(),
     };
 
