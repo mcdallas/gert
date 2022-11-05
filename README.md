@@ -35,6 +35,15 @@ gert -s wallpapers -s earthporn
 ![gert4](https://user-images.githubusercontent.com/15388116/200098386-762a7655-9bb0-43e8-a645-09fdb65c886d.gif)
 
 
+
+To download media from a single post/collection just pass the url of the post
+
+```bash
+gert https://old.reddit.com/r/wallpapers/comments/tckky1/some_walls_from_my_collections_vol6/
+```
+
+
+
 ## Command line options
 
 ```bash
