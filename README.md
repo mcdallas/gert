@@ -32,6 +32,7 @@ Simply pass the names of the subreddits you want to download media from with (mu
 gert -s wallpapers -s earthporn
 ```
 
+![gert4](https://user-images.githubusercontent.com/15388116/200098386-762a7655-9bb0-43e8-a645-09fdb65c886d.gif)
 
 
 ## Command line options
@@ -58,6 +59,7 @@ OPTIONS:
     -p, --period <PERIOD>             Time period to download from [default: day]  [possible values: now, hour, day, week, month, year, all]
     -s, --subreddit <SUBREDDIT>...    Download media from these subreddit
 ```
+
 
 
 
