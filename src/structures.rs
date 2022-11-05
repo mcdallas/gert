@@ -207,3 +207,66 @@ impl Add for Summary {
         }
     }
 }
+
+use log::{debug, warn};
+use crate::download::*;
+use url::{Position, Url};
+impl Post {
+    fn get_url(&self) -> Option<String> {
+        let original = self.data.url.as_ref().unwrap();
+        if let Ok(u) = Url::parse(original) {
+            let mut parsed = u.clone();
+            match parsed.path_segments_mut() {
+                Ok(mut p) => p.pop_if_empty(),
+                Err(_) => return None,
+            };
+            return Some(parsed[..Position::AfterPath].to_owned());
+        }
+        None
+    }
+
+    pub fn get_type(&self) -> MediaType {
+        if self.data.gallery_data.is_some() && self.data.media_metadata.is_some() {
+            return MediaType::Gallery;
+        }
+        let url = match self.get_url() {
+            Some(u) => u,
+            None => return MediaType::Unsupported,
+        };
+
+        if url.contains(REDDIT_IMAGE_SUBDOMAIN) {
+            // if the URL uses the reddit image subdomain and if the extension is
+            // jpg, png or gif, then we can use the URL as is.
+            if url.ends_with(JPG_EXTENSION) || url.ends_with(PNG_EXTENSION) {
+                return MediaType::RedditImage;
+            } else if url.ends_with(GIF_EXTENSION) {
+                return MediaType::RedditGif;
+            } else if url.contains(REDDIT_VIDEO_SUBDOMAIN) {
+                return MediaType::RedditVideo;
+            } else {
+                warn!("Unsupported reddit URL: {}", url);
+            }
+        }
+        if url.contains(GFYCAT_DOMAIN) || url.contains(REDGIFS_DOMAIN) {
+            return MediaType::GfycatGif;
+        }
+        if url.contains(GIPHY_DOMAIN) {
+            return MediaType::GiphyGif;
+        }
+        if url.contains(IMGUR_DOMAIN) {
+            if url.contains(IMGUR_SUBDOMAIN) {
+                if url.ends_with(GIFV_EXTENSION) {
+                    return MediaType::ImgurGif;
+                } else if url.ends_with(PNG_EXTENSION) || url.ends_with(JPG_EXTENSION) {
+                    return MediaType::ImgurImage;
+                } else {
+                    warn!("Unsupported imgur URL: {}", url);
+                };
+            } else {
+                warn!("Unsupported imgur Subdomain: {}", url);
+            }
+        }
+
+        return MediaType::Unsupported;
+    }
+}

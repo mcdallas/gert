@@ -17,27 +17,27 @@ use crate::structures::{GfyData, PostData};
 use crate::structures::{Post, Summary};
 use crate::utils::{check_path_present, check_url_is_mp4};
 
-static JPG_EXTENSION: &str = "jpg";
-static PNG_EXTENSION: &str = "png";
-static GIF_EXTENSION: &str = "gif";
-static GIFV_EXTENSION: &str = "gifv";
+pub static JPG_EXTENSION: &str = "jpg";
+pub static PNG_EXTENSION: &str = "png";
+pub static GIF_EXTENSION: &str = "gif";
+pub static GIFV_EXTENSION: &str = "gifv";
 static MP4_EXTENSION: &str = "mp4";
 
 static REDDIT_DOMAIN: &str = "reddit.com";
-static REDDIT_IMAGE_SUBDOMAIN: &str = "i.redd.it";
-static REDDIT_VIDEO_SUBDOMAIN: &str = "v.redd.it";
+pub static REDDIT_IMAGE_SUBDOMAIN: &str = "i.redd.it";
+pub static REDDIT_VIDEO_SUBDOMAIN: &str = "v.redd.it";
 static REDDIT_GALLERY_PATH: &str = "gallery";
 
-static IMGUR_DOMAIN: &str = "imgur.com";
-static IMGUR_SUBDOMAIN: &str = "i.imgur.com";
+pub static IMGUR_DOMAIN: &str = "imgur.com";
+pub static IMGUR_SUBDOMAIN: &str = "i.imgur.com";
 
-static GFYCAT_DOMAIN: &str = "gfycat.com";
+pub static GFYCAT_DOMAIN: &str = "gfycat.com";
 static GFYCAT_API_PREFIX: &str = "https://api.gfycat.com/v1/gfycats";
 
-static REDGIFS_DOMAIN: &str = "redgifs.com";
+pub static REDGIFS_DOMAIN: &str = "redgifs.com";
 static REDGIFS_API_PREFIX: &str = "https://api.redgifs.com/v1/gfycats";
 
-static GIPHY_DOMAIN: &str = "giphy.com";
+pub static GIPHY_DOMAIN: &str = "giphy.com";
 static GIPHY_MEDIA_SUBDOMAIN: &str = "media.giphy.com";
 static GIPHY_MEDIA_SUBDOMAIN_0: &str = "media0.giphy.com";
 static GIPHY_MEDIA_SUBDOMAIN_1: &str = "media1.giphy.com";
@@ -57,15 +57,18 @@ enum MediaStatus {
 
 /// Media Types Supported
 #[derive(Debug, PartialEq)]
-enum MediaType {
+pub enum MediaType {
+    Gallery,
     RedditImage,
     RedditGif,
     RedditVideoWithAudio,
     RedditVideoWithoutAudio,
+    RedditVideo,
     GfycatGif,
     GiphyGif,
     ImgurImage,
     ImgurGif,
+    Unsupported,
 }
 
 /// Information about supported media for downloading
@@ -675,4 +678,44 @@ impl<'a> Downloader<'a> {
 
         Ok(media)
     }
+
+    fn download(&self, post: &Post) {
+        match post.get_type() {
+            MediaType::Gallery => self.download_gallery(post),
+            MediaType::RedditImage => self.download_reddit_image(post),
+            MediaType::RedditVideo => self.download_reddit_video(post),
+            MediaType::GfycatGif => self.download_gfycat(post),
+            MediaType::GiphyGif => self.download_giphy(post),
+            MediaType::ImgurGif => self.download_imgur_gif(post),
+            MediaType::ImgurImage => self.download_imgur_image(post),
+            _ => {}
+        }
+    }
+
+    fn download_gallery(&self, post: &Post) {
+        let gallery = post.data.gallery_data.as_ref().unwrap();
+        let media_metadata = post.data.media_metadata.as_ref().unwrap();
+
+        // collect all the URLs for the images in the album
+        let mut image_urls = Vec::new();
+        for item in gallery.items.iter() {
+            let mut ext = JPG_EXTENSION;
+            if let Some(media) = media_metadata.get(&item.media_id) {
+                ext = media.m.split('/').last().unwrap();
+            }
+            image_urls.push(format!("https://{}/{}.{}", REDDIT_IMAGE_SUBDOMAIN, item.media_id, ext))
+        }
+    }
+
+    fn download_reddit_image(&self, post: &Post) {}
+
+    fn download_reddit_video(&self, post: &Post) {}
+
+    fn download_gfycat(&self, post: &Post) {}
+
+    fn download_giphy(&self, post: &Post) {}
+
+    fn download_imgur_gif(&self, post: &Post) {}
+
+    fn download_imgur_image(&self, post: &Post) {}
 }
