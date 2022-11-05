@@ -9,7 +9,7 @@ use auth::Client;
 use crate::download::Downloader;
 use crate::errors::GertError;
 use crate::errors::GertError::DataDirNotFound;
-use crate::structures::Post;
+use crate::structures::{Post, SingleListing};
 use crate::subreddit::Subreddit;
 use crate::user::User;
 use crate::utils::*;
@@ -22,12 +22,24 @@ mod subreddit;
 mod user;
 mod utils;
 
+fn exit(msg: &str) {
+    let err = clap::Error::with_description(msg, clap::ErrorKind::InvalidValue);
+    err.exit();
+}
+
 #[tokio::main]
 async fn main() -> Result<(), GertError> {
     let matches = App::new("Gert")
         .version(crate_version!())
         .author("Mike Dallas")
         .about("Simple CLI tool to download media from Reddit")
+        .arg(
+            Arg::with_name("url")
+                .value_name("URL")
+                .help("URL of a single post to download")
+                .takes_value(true)
+                .required_unless("subreddit"),
+        )
         .arg(
             Arg::with_name("environment")
                 .short("e")
@@ -42,7 +54,8 @@ async fn main() -> Result<(), GertError> {
                 .long("match")
                 .value_name("MATCH")
                 .help("Pass a regex expresion to filter the title of the post")
-                .takes_value(true),
+                .takes_value(true)
+                .conflicts_with("url"),
         )
         .arg(
             Arg::with_name("output_directory")
@@ -80,7 +93,8 @@ async fn main() -> Result<(), GertError> {
                 .value_name("LIMIT")
                 .help("Limit the number of posts to download")
                 .takes_value(true)
-                .default_value("25"),
+                .default_value("25")
+                .conflicts_with("url"),
         )
         .arg(
             Arg::with_name("subreddits")
@@ -91,7 +105,8 @@ async fn main() -> Result<(), GertError> {
                 .value_delimiter(",")
                 .help("Download media from these subreddit")
                 .takes_value(true)
-                .required(true),
+                .required_unless("url")
+                .conflicts_with("url"),
         )
         .arg(
             Arg::with_name("period")
@@ -101,7 +116,8 @@ async fn main() -> Result<(), GertError> {
                 .help("Time period to download from")
                 .takes_value(true)
                 .possible_values(&["now", "hour", "day", "week", "month", "year", "all"])
-                .default_value("day"),
+                .default_value("day")
+                .conflicts_with("url"),
         )
         .arg(
             Arg::with_name("feed")
@@ -111,7 +127,8 @@ async fn main() -> Result<(), GertError> {
                 .help("Feed to download from")
                 .takes_value(true)
                 .possible_values(&["hot", "new", "top", "rising"])
-                .default_value("hot"),
+                .default_value("hot")
+                .conflicts_with("url"),
         )
         .get_matches();
 
@@ -124,29 +141,33 @@ async fn main() -> Result<(), GertError> {
     // generate human readable file names instead of MD5 Hashed file names
     let use_human_readable = matches.is_present("human_readable");
     // restrict downloads to these subreddits
-    let subreddits: Vec<&str> = matches.values_of("subreddits").unwrap().collect();
+
+    let subreddits: Vec<&str> = match matches.is_present("subreddits") {
+        true => matches.values_of("subreddits").unwrap().collect(),
+        false => Vec::new(),
+    };
+
+    let single_url = match matches.value_of("url") {
+        Some(url) => {
+            let parsed = url.parse::<url::Url>();
+            if parsed.is_err() {
+                return Ok(exit("Invalid URL"));
+            }
+            Some(parsed.unwrap())
+        }
+        None => None,
+    };
+
     let limit = match matches.value_of("limit").unwrap().parse::<u32>() {
         Ok(limit) => limit,
-        Err(_) => {
-            let err = clap::Error::with_description(
-                "Limit must be a number",
-                clap::ErrorKind::InvalidValue,
-            );
-            err.exit();
-        }
+        Err(_) => return Ok(exit("Limit must be a number")),
     };
     let period = matches.value_of("period");
     let feed = matches.value_of("feed").unwrap();
     let pattern = match matches.value_of("match") {
         Some(pattern) => match regex::Regex::new(pattern) {
             Ok(reg) => reg,
-            Err(_) => {
-                let err = clap::Error::with_description(
-                    "Invalid regex pattern",
-                    clap::ErrorKind::InvalidValue,
-                );
-                err.exit();
-            }
+            Err(_) => return Ok(exit("Invalid regex pattern")),
         },
         None => regex::Regex::new(".*").unwrap(),
     };
@@ -246,15 +267,24 @@ async fn main() -> Result<(), GertError> {
     info!("Starting data gathering from Reddit. This might take some time. Hold on....");
 
     let mut posts: Vec<Post> = Vec::with_capacity(limit as usize * subreddits.len());
-    for subreddit in &subreddits {
-        let listing = Subreddit::new(subreddit).get_feed(feed, limit, period).await?;
-        posts.extend(
-            listing.data.children.into_iter().filter(|post| post.data.url.is_some()).filter(
-                |post| pattern.is_match(post.data.title.as_ref().unwrap_or(&"".to_string())),
-            ),
-        );
+    if let Some(url) = single_url {
+        let url = format!("{}.json", url);
+        let single_listing: SingleListing = session.get(url).send().await?.json().await?;
+        let post = single_listing.0.data.children.into_iter().next().unwrap();
+        if post.data.url.is_none() {
+            return Ok(exit("Post contains no media"));
+        }
+        posts.push(post);
+    } else {
+        for subreddit in &subreddits {
+            let listing = Subreddit::new(subreddit).get_feed(feed, limit, period).await?;
+            posts.extend(
+                listing.data.children.into_iter().filter(|post| post.data.url.is_some()).filter(
+                    |post| pattern.is_match(post.data.title.as_ref().unwrap_or(&"".to_string())),
+                ),
+            );
+        }
     }
-
     let downloader = Downloader::new(
         posts,
         &data_directory,

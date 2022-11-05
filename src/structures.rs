@@ -1,4 +1,4 @@
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::Value;
 use std::{collections::HashMap, ops::Add};
 
@@ -48,6 +48,25 @@ pub struct Listing {
     /// Contains the data for the children of the listing.
     /// Listings are collections of data. For example, saved posts, hot posts in a subreddit
     pub data: ListingData,
+}
+
+#[derive(Debug)]
+pub struct SingleListing(pub Listing);
+
+#[derive(Deserialize, Debug)]
+struct ListingsFutureCompat<'a>(
+    Listing,
+    #[serde(default, borrow)] Option<&'a serde_json::value::RawValue>,
+);
+
+impl<'de> Deserialize<'de> for SingleListing {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let t: ListingsFutureCompat = Deserialize::deserialize(deserializer)?;
+        Ok(SingleListing(t.0))
+    }
 }
 
 /// The contents of a call to a 'listing' endpoint.
