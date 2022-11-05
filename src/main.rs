@@ -38,7 +38,8 @@ async fn main() -> Result<(), GertError> {
                 .value_name("URL")
                 .help("URL of a single post to download")
                 .takes_value(true)
-                .required_unless("subreddit"),
+                .required_unless("subreddit")
+                .conflicts_with_all(&["subreddit", "period", "feed", "limit", "match"]),
         )
         .arg(
             Arg::with_name("environment")
@@ -55,7 +56,6 @@ async fn main() -> Result<(), GertError> {
                 .value_name("MATCH")
                 .help("Pass a regex expresion to filter the title of the post")
                 .takes_value(true)
-                .conflicts_with("url"),
         )
         .arg(
             Arg::with_name("output_directory")
@@ -94,7 +94,6 @@ async fn main() -> Result<(), GertError> {
                 .help("Limit the number of posts to download")
                 .takes_value(true)
                 .default_value("25")
-                .conflicts_with("url"),
         )
         .arg(
             Arg::with_name("subreddits")
@@ -117,7 +116,6 @@ async fn main() -> Result<(), GertError> {
                 .takes_value(true)
                 .possible_values(&["now", "hour", "day", "week", "month", "year", "all"])
                 .default_value("day")
-                .conflicts_with("url"),
         )
         .arg(
             Arg::with_name("feed")
@@ -128,7 +126,6 @@ async fn main() -> Result<(), GertError> {
                 .takes_value(true)
                 .possible_values(&["hot", "new", "top", "rising"])
                 .default_value("hot")
-                .conflicts_with("url"),
         )
         .get_matches();
 
