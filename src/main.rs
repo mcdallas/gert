@@ -22,7 +22,7 @@ mod subreddit;
 mod user;
 mod utils;
 
-fn exit(msg: &str) {
+fn exit(msg: &str) -> ! {
     let err = clap::Error::with_description(msg, clap::ErrorKind::InvalidValue);
     err.exit();
 }
@@ -148,7 +148,7 @@ async fn main() -> Result<(), GertError> {
         Some(url) => {
             let parsed = url.parse::<url::Url>();
             if parsed.is_err() {
-                return Ok(exit("Invalid URL"));
+                exit("Invalid URL");
             }
             Some(parsed.unwrap())
         }
@@ -157,14 +157,14 @@ async fn main() -> Result<(), GertError> {
 
     let limit = match matches.value_of("limit").unwrap().parse::<u32>() {
         Ok(limit) => limit,
-        Err(_) => return Ok(exit("Limit must be a number")),
+        Err(_) => exit("Limit must be a number"),
     };
     let period = matches.value_of("period");
     let feed = matches.value_of("feed").unwrap();
     let pattern = match matches.value_of("match") {
         Some(pattern) => match regex::Regex::new(pattern) {
             Ok(reg) => reg,
-            Err(_) => return Ok(exit("Invalid regex pattern")),
+            Err(_) => exit("Invalid regex pattern"),
         },
         None => regex::Regex::new(".*").unwrap(),
     };
@@ -266,10 +266,14 @@ async fn main() -> Result<(), GertError> {
     let mut posts: Vec<Post> = Vec::with_capacity(limit as usize * subreddits.len());
     if let Some(url) = single_url {
         let url = format!("{}.json", url);
-        let single_listing: SingleListing = session.get(url).send().await?.json().await?;
+        let single_listing: SingleListing = match session.get(&url).send().await {
+            Ok(response) => response.json().await.map_err(|_| GertError::JsonParseError(url))?,
+            Err(_) => exit(&format!("Error fetching data from {}", &url))
+        };
+        
         let post = single_listing.0.data.children.into_iter().next().unwrap();
         if post.data.url.is_none() {
-            return Ok(exit("Post contains no media"));
+            exit("Post contains no media")
         }
         posts.push(post);
     } else {

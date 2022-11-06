@@ -31,4 +31,6 @@ pub enum GertError {
     ToStringConversionError(#[from] ToStrError),
     #[error("Could not convert from string")]
     FromStringConversionError(#[from] FromStrError),
+    #[error("Error parsing JSON from {0}")]
+    JsonParseError(String)
 }
