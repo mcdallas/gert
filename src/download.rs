@@ -707,7 +707,7 @@ impl<'a> Downloader<'a> {
             MediaType::Gallery => self.download_gallery(post).await,
             MediaType::RedditImage => self.download_reddit_image(post).await,
             MediaType::RedditGif => self.download_reddit_image(post).await,
-            // MediaType::RedditVideo => self.download_reddit_video(post),
+            MediaType::RedditVideo => self.download_reddit_video(post).await,
             MediaType::GfycatGif => self.download_gfycat(post).await,
             // MediaType::GiphyGif => self.download_giphy(post),
             // MediaType::ImgurGif => self.download_imgur_gif(post),
@@ -790,6 +790,87 @@ impl<'a> Downloader<'a> {
         }
     }
 
+    async fn download_reddit_video(&self, post: &Post) {
+        let post_url = post.data.url.as_ref().unwrap();
+        let extension = post_url.split('.').last().unwrap();
+
+        let url = match extension {
+            MP4_EXTENSION => {
+                // if the URL uses the reddit video subdomain and if the extension is
+                // mp4, then we can use the URL as is.
+                post_url.to_owned()
+            },
+            _ => {
+                // if the URL uses the reddit video subdomain, but the link does not
+                // point directly to the mp4, then use the fallback URL to get the
+                // appropriate link. The video quality might range from 96p to 720p
+                match &post.data.media {
+                    Some(media) => {
+                        match &media.reddit_video {
+                            Some(video) => {
+                                video.fallback_url.replace("?source=fallback", "")
+                            },
+                            None => {
+                                self.fail("No fallback URL found for reddit video");
+                                return;
+                            }
+                        }
+                    },
+                    None => {
+                        self.fail("No media data found in post");
+                        return;
+                    }
+
+                }
+
+            }
+        };
+        let mut video_task: Option<DownloadTask> = None;
+        let mut audio_task: Option<DownloadTask> = None;
+
+        if let Some(dash_video) = url.split('/').last() {
+            if !dash_video.contains("DASH") {
+                self.fail("Cannot extract video url from reddit video");
+                return;
+            }
+            // todo: find exhaustive collection of these, or figure out if they are (x, x*2) pairs
+            let dash_video_only = vec!["DASH_1_2_M", "DASH_2_4_M", "DASH_4_8_M"];
+            let ext = url.split('.').last().unwrap().to_owned();
+            video_task = Some(DownloadTask::from_post(post, url.clone(), ext, None));
+            if !dash_video_only.contains(&dash_video) & self.ffmpeg_available {
+                let all = &url.split('/').collect::<Vec<&str>>();
+                let mut result = all.split_last().unwrap().1.to_vec();
+                result.push("DASH_audio.mp4");
+                // dynamically generate audio URLs for reddit videos by changing the video URL
+                let maybe_audio_url = result.join("/");
+                // Check the mime type to see the generated URL contains an audio file
+                // This can be done by checking the content type header for the given URL
+                // Reddit API response does not seem to expose any easy way to figure this out
+                if let Ok(Some(exists)) = check_url_is_mp4(&maybe_audio_url).await {
+                    if exists {
+                        audio_task = Some(DownloadTask::from_post(post, maybe_audio_url, MP4_EXTENSION.to_owned(), None));
+                    }
+                }
+            }
+        } else {
+            let msg = format!("Unsupported reddit video URL: {}", url);
+            self.fail(&msg);
+        }
+        if let Some(v_task) = video_task {
+            if let Some(a_task) = audio_task {
+                if let (Some(video_filename), Some(audio_filename)) = (self.schedule_task(v_task).await, self.schedule_task(a_task).await) {
+                    // merge the audio and video files
+                    if self.stitch_audio_video(&video_filename, &audio_filename).await.is_err(){
+                        debug!("Error merging audio and video files");
+                    }
+                }
+            } else {
+                self.schedule_task(v_task).await;
+            }
+        }
+
+    }
+
     // fn download_giphy(&self, post: &Post) {}
 
     // fn download_imgur_gif(&self, post: &Post) {}
@@ -806,24 +887,23 @@ impl<'a> Downloader<'a> {
         *self.skipped.lock().unwrap() += 1;
     }
 
-    async fn schedule_task(&self, task: DownloadTask) {
+    async fn schedule_task(&self, task: DownloadTask) -> Option<String> {
         debug!("Received task: {:?}", task);
         {
             *self.supported.lock().unwrap() += 1;
         }
         
-
         if !self.should_download {
             let msg = format!("Found media at: {}", task.url);
             self.skip(&msg);
-            return
+            return None
         }
         let file_name = self.get_filename(&task);
 
         if check_path_present(&file_name) {
             let msg = format!("Media from url {} already downloaded. Skipping...", task.url);
             self.skip(&msg);
-            return
+            return None
         }
 
         let result = self.download_media(&file_name, &task.url).await;
@@ -832,50 +912,82 @@ impl<'a> Downloader<'a> {
                 info!("Downloaded media from url: {}", task.url);
                 *self.downloaded.lock().unwrap() += 1;
                 match self.post_process(file_name, &task).await {
-                    Ok(_) => {}
+                    Ok(filepath) => { return Some(filepath) },
                     Err(e) => {
                         error!("Error while post processing: {}", e);
+                        return None
                     }
                 }
                 
             }
             Ok(false) => {
                 self.fail(&format!("Failed to download media from url: {}", task.url));
+                return None
             }
             Err(e) => {
                 self.fail(&format!("Error while downloading media from url {}: {}", task.url, e));
+                return None
             }
         }
 
     }
 
-    async fn post_process(&self, download_path: String, task: &DownloadTask) -> Result<(), GertError> {
+    async fn post_process(&self, download_path: String, task: &DownloadTask) -> Result<String, GertError> {
         if !self.ffmpeg_available {
-            return Ok(())
+            return Ok(download_path)
         };
         
         if task.extension == GIF_EXTENSION {
             //If ffmpeg is installed convert gifs to mp4
+            let output_file = download_path.replace(".gif", ".mp4");
             let mut command = tokio::process::Command::new("ffmpeg")
             .arg("-i")
             .arg(&download_path)
             .arg("-movflags").arg("+faststart").arg("-pix_fmt").arg("yuv420p").arg("-vf").arg("scale=trunc(iw/2)*2:trunc(ih/2)*2")
-            .arg(&download_path.replace(".gif", ".mp4"))
+            .arg(&output_file)
             .stdout(Stdio::null())
             .stderr(Stdio::null())
-            .spawn()
-            .expect("failed to execute process");
+            .spawn()?;
             
             let status = command.wait().await?;
             if status.success() {
                 // Cleanup the gif
                 fs::remove_file(download_path)?;
+                return Ok(output_file)
+            } else {
+                return Err(GertError::FfmpegError("Failed to convert gif to mp4".into()))
             }
         }
-        Ok(())
+        Ok(download_path)
         
     }
 
+    async fn stitch_audio_video(&self, video_path: &str, audio_path: &str) -> Result<String, GertError> {
+        let output_file = video_path.replace(".mp4", "-merged.mp4");
+        let mut command = tokio::process::Command::new("ffmpeg")
+        .arg("-i")
+        .arg(&video_path)
+        .arg("-i")
+        .arg(&audio_path)
+        .arg("-c").arg("copy").arg("-map").arg("1:a").arg("-map").arg("0:v")
+        .arg(&output_file)
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()?;
+
+        let status = command.wait().await?;
+        if status.success() {
+            // Cleanup the gif
+            fs::remove_file(video_path)?;
+            fs::remove_file(audio_path)?;
+
+            fs::rename(output_file, video_path)?;
+            debug!("Successfully merged audio and video: {}", video_path);
+            return Ok(video_path.to_owned())
+        }
+
+        Err(GertError::FfmpegError("Failed to merge audio and video".into()))
+    }
 
     fn get_filename(&self, task: &DownloadTask) -> String {
         let idx = match task.index {

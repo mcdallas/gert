@@ -241,12 +241,14 @@ impl Post {
                 return MediaType::RedditImage;
             } else if url.ends_with(GIF_EXTENSION) {
                 return MediaType::RedditGif;
-            } else if url.contains(REDDIT_VIDEO_SUBDOMAIN) {
-                return MediaType::RedditVideo;
             } else {
                 warn!("Unsupported reddit URL: {}", url);
             }
         }
+        if url.contains(REDDIT_VIDEO_SUBDOMAIN) {
+            return MediaType::RedditVideo;
+        }
+
         if url.contains(GFYCAT_DOMAIN) || url.contains(REDGIFS_DOMAIN) {
             return MediaType::GfycatGif;
         }
