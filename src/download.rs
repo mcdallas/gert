@@ -1,7 +1,7 @@
 use std::borrow::Borrow;
 use std::fs::File;
 use std::path::Path;
-use std::process::Command;
+use std::process::{Command, Stdio};
 use std::sync::{Arc, Mutex};
 use std::{fs, io};
 
@@ -88,6 +88,10 @@ pub struct Downloader<'a> {
     use_human_readable: bool,
     ffmpeg_available: bool,
     session: &'a reqwest::Client,
+    supported: Arc<Mutex<u16>>,
+    skipped: Arc<Mutex<u16>>,
+    downloaded: Arc<Mutex<u16>>,
+    failed: Arc<Mutex<u16>>,
 }
 
 impl<'a> Downloader<'a> {
@@ -106,19 +110,37 @@ impl<'a> Downloader<'a> {
             use_human_readable,
             ffmpeg_available,
             session,
+            supported: Arc::new(Mutex::new(0)),
+            skipped: Arc::new(Mutex::new(0)),
+            downloaded: Arc::new(Mutex::new(0)),
+            failed: Arc::new(Mutex::new(0)),
         }
     }
 
-    pub async fn run(self) -> Result<(), GertError> {
-        let summary = self.download_collection(&self.posts).await?;
+    pub async fn run(&self) -> Result<(), GertError> {
+        for post in self.posts.iter() {
+            self.process(post).await;
+        }
 
         info!("#####################################");
         info!("Download Summary:");
-        info!("Number of supported media: {}", summary.media_supported);
-        info!("Number of media downloaded: {}", summary.media_downloaded);
-        info!("Number of media skipped: {}", summary.media_skipped);
+        info!("Number of supported media: {}", *self.supported.lock().unwrap());
+        info!("Number of media downloaded: {}", *self.downloaded.lock().unwrap());
+        info!("Number of media skipped: {}", *self.skipped.lock().unwrap());
+        info!("Number of media failed: {}", *self.failed.lock().unwrap());
         info!("#####################################");
         info!("FIN.");
+
+
+        // let summary = self.download_collection(&self.posts).await?;
+
+        // info!("#####################################");
+        // info!("Download Summary:");
+        // info!("Number of supported media: {}", summary.media_supported);
+        // info!("Number of media downloaded: {}", summary.media_downloaded);
+        // info!("Number of media skipped: {}", summary.media_skipped);
+        // info!("#####################################");
+        // info!("FIN.");
 
         Ok(())
     }
@@ -679,43 +701,157 @@ impl<'a> Downloader<'a> {
         Ok(media)
     }
 
-    fn download(&self, post: &Post) {
+    async fn process(&self, post: &Post) {
+        info!("type is : {:?}", post.get_type());
         match post.get_type() {
-            MediaType::Gallery => self.download_gallery(post),
-            MediaType::RedditImage => self.download_reddit_image(post),
-            MediaType::RedditVideo => self.download_reddit_video(post),
-            MediaType::GfycatGif => self.download_gfycat(post),
-            MediaType::GiphyGif => self.download_giphy(post),
-            MediaType::ImgurGif => self.download_imgur_gif(post),
-            MediaType::ImgurImage => self.download_imgur_image(post),
+            MediaType::Gallery => self.download_gallery(post).await,
+            MediaType::RedditImage => self.download_reddit_image(post).await,
+            MediaType::RedditGif => self.download_reddit_image(post).await,
+            // MediaType::RedditVideo => self.download_reddit_video(post),
+            // MediaType::GfycatGif => self.download_gfycat(post),
+            // MediaType::GiphyGif => self.download_giphy(post),
+            // MediaType::ImgurGif => self.download_imgur_gif(post),
+            // MediaType::ImgurImage => self.download_imgur_image(post),
             _ => {}
         }
     }
 
-    fn download_gallery(&self, post: &Post) {
+    async fn download_gallery(&self, post: &Post) {
         let gallery = post.data.gallery_data.as_ref().unwrap();
         let media_metadata = post.data.media_metadata.as_ref().unwrap();
 
         // collect all the URLs for the images in the album
-        let mut image_urls = Vec::new();
-        for item in gallery.items.iter() {
+        for (index, item) in gallery.items.iter().enumerate() {
             let mut ext = JPG_EXTENSION;
             if let Some(media) = media_metadata.get(&item.media_id) {
                 ext = media.m.split('/').last().unwrap();
             }
-            image_urls.push(format!("https://{}/{}.{}", REDDIT_IMAGE_SUBDOMAIN, item.media_id, ext))
+            let url = format!("https://{}/{}.{}", REDDIT_IMAGE_SUBDOMAIN, item.media_id, ext);
+            let task = DownloadTask::from_post(post, url, ext.to_owned(), Some(index));
+            self.schedule_task(task).await;
         }
     }
 
-    fn download_reddit_image(&self, post: &Post) {}
+    async fn download_reddit_image(&self, post: &Post) { 
+        let url = post.data.url.as_ref().unwrap();
+        let extension = url.split('.').last().unwrap();
+        let task = DownloadTask::from_post(post, url.to_owned(), extension.to_owned(), None);
+        self.schedule_task(task).await;
 
-    fn download_reddit_video(&self, post: &Post) {}
+    }
 
-    fn download_gfycat(&self, post: &Post) {}
+    // fn download_reddit_video(&self, post: &Post) {}
 
-    fn download_giphy(&self, post: &Post) {}
+    // fn download_gfycat(&self, post: &Post) {}
 
-    fn download_imgur_gif(&self, post: &Post) {}
+    // fn download_giphy(&self, post: &Post) {}
 
-    fn download_imgur_image(&self, post: &Post) {}
+    // fn download_imgur_gif(&self, post: &Post) {}
+
+    // fn download_imgur_image(&self, post: &Post) {}
+
+
+    async fn schedule_task(&self, task: DownloadTask) {
+        debug!("Received task: {:?}", task);
+        {
+            *self.supported.lock().unwrap() += 1;
+        }
+        
+
+        if !self.should_download {
+            info!("Found media at: {}", task.url);
+            *self.skipped.lock().unwrap() += 1;
+            return
+        }
+        let file_name = self.get_filename(&task);
+
+        if check_path_present(&file_name) {
+            debug!("Media from url {} already downloaded. Skipping...", task.url);
+            *self.skipped.lock().unwrap() += 1;
+            return
+        }
+
+        let result = self.download_media(&file_name, &task.url).await;
+        match result {
+            Ok(true) => {
+                info!("Downloaded media from url: {}", task.url);
+                *self.downloaded.lock().unwrap() += 1;
+                match self.post_process(file_name, &task).await {
+                    Ok(_) => {}
+                    Err(e) => {
+                        error!("Error while post processing: {}", e);
+                    }
+                }
+                
+            }
+            Ok(false) => {
+                warn!("Failed to download media from url: {}", task.url);
+                *self.failed.lock().unwrap() += 1;
+            }
+            Err(e) => {
+                error!("Failed to download media from url: {}. Error: {}", task.url, e);
+                *self.failed.lock().unwrap() += 1;
+            }
+        }
+
+    }
+
+    async fn post_process(&self, download_path: String, task: &DownloadTask) -> Result<(), GertError> {
+        if !self.ffmpeg_available {
+            return Ok(())
+        };
+        
+        if task.extension == GIF_EXTENSION {
+            //If ffmpeg is installed convert gifs to mp4
+            let mut command = tokio::process::Command::new("ffmpeg")
+            .arg("-i")
+            .arg(&download_path)
+            .arg("-movflags").arg("+faststart").arg("-pix_fmt").arg("yuv420p").arg("-vf").arg("scale=trunc(iw/2)*2:trunc(ih/2)*2")
+            .arg(&download_path.replace(".gif", ".mp4"))
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .expect("failed to execute process");
+            
+            let status = command.wait().await?;
+            if status.success() {
+                // Cleanup the gif
+                fs::remove_file(download_path)?;
+            }
+        }
+        Ok(())
+        
+    }
+
+
+    fn get_filename(&self, task: &DownloadTask) -> String {
+        let idx = match task.index {
+            Some(i) => format!("{}", i),
+            None => "0".to_string()
+        };
+        self.generate_file_name(&task.url, &task.subreddit, &task.extension, &task.post_name, &task.post_title, &idx)
+    }
+    
 }
+#[derive(Debug)]
+struct DownloadTask {
+    url: String,
+    subreddit: String,
+    extension: String,
+    post_name: String,
+    post_title: String,
+    index: Option<usize>
+}
+impl DownloadTask {
+    fn from_post(post: &Post, url: String, extension: String, index: Option<usize>) -> DownloadTask {
+        DownloadTask {
+            url,
+            subreddit: post.data.subreddit.to_owned(),
+            extension,
+            post_name: post.data.name.to_owned(),
+            post_title: post.data.title.clone().unwrap(),
+            index
+        }
+    }
+}
+
