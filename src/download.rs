@@ -21,7 +21,7 @@ pub static JPG_EXTENSION: &str = "jpg";
 pub static PNG_EXTENSION: &str = "png";
 pub static GIF_EXTENSION: &str = "gif";
 pub static GIFV_EXTENSION: &str = "gifv";
-static MP4_EXTENSION: &str = "mp4";
+const MP4_EXTENSION: &str = "mp4";
 
 static REDDIT_DOMAIN: &str = "reddit.com";
 pub static REDDIT_IMAGE_SUBDOMAIN: &str = "i.redd.it";
@@ -708,7 +708,7 @@ impl<'a> Downloader<'a> {
             MediaType::RedditImage => self.download_reddit_image(post).await,
             MediaType::RedditGif => self.download_reddit_image(post).await,
             // MediaType::RedditVideo => self.download_reddit_video(post),
-            // MediaType::GfycatGif => self.download_gfycat(post),
+            MediaType::GfycatGif => self.download_gfycat(post).await,
             // MediaType::GiphyGif => self.download_giphy(post),
             // MediaType::ImgurGif => self.download_imgur_gif(post),
             // MediaType::ImgurImage => self.download_imgur_image(post),
@@ -740,9 +740,55 @@ impl<'a> Downloader<'a> {
 
     }
 
-    // fn download_reddit_video(&self, post: &Post) {}
+    async fn download_gfycat(&self, post: &Post) {
+        let url = post.data.url.as_ref().unwrap();
+        let extension = url.split('.').last().unwrap();
+        match extension {
+            MP4_EXTENSION => {
+                let task = DownloadTask::from_post(post, url.to_owned(), extension.to_owned(), None);
+                self.schedule_task(task).await;
+            },
+            _ => {
+                // Convert Gfycat/Redgifs GIFs into mp4 URLs for download
+                let api_prefix =
+                if url.contains(GFYCAT_DOMAIN) { GFYCAT_API_PREFIX } else { REDGIFS_API_PREFIX };
+                if let Some(media_id) = url.split('/').last() {
+                    let api_url = format!("{}/{}", api_prefix, media_id);
+                    debug!("GFY API URL: {}", api_url);
+        
+                    // talk to gfycat API and get GIF information
+                    let response = match self.session.get(&api_url).send().await{
+                        Ok(response) => response,
+                        Err(e) => {
+                            self.fail("Error getting response from GFYCAT API");
+                            return;
+                        }
+                    };
+                    // if the gif is not available anymore, Gfycat might send
+                    // a 404 response. Proceed to get the mp4 URL only if the
+                    // response was HTTP 200
+                    if response.status() == StatusCode::OK {
+                        let data = match response.json::<GfyData>().await {
+                            Ok(data) => data,
+                            Err(_) => {
+                                self.fail("Error parsing response from GFYCAT API");
+                                return;
+                            }
+                        };
+                        let task = DownloadTask::from_post(post, data.gfy_item.mp4_url, MP4_EXTENSION.to_owned(), None);
+                        self.schedule_task(task).await;
+                    } else {
+                        let msg = format!("Gfycat API returned status code: {}", response.status());
+                        self.fail(&msg);
+                    }
 
-    // fn download_gfycat(&self, post: &Post) {}
+                }  else {
+                    let msg = format!("Unsupported Gfycat URL: {}", url);
+                    self.fail(&msg);
+                }
+            }
+        }
+    }
 
     // fn download_giphy(&self, post: &Post) {}
 
@@ -750,6 +796,15 @@ impl<'a> Downloader<'a> {
 
     // fn download_imgur_image(&self, post: &Post) {}
 
+    fn fail(&self, msg: &str) {
+        error!("{}", msg);
+        *self.failed.lock().unwrap() += 1;
+    }
+
+    fn skip(&self, msg: &str) {
+        debug!("{}", msg);
+        *self.skipped.lock().unwrap() += 1;
+    }
 
     async fn schedule_task(&self, task: DownloadTask) {
         debug!("Received task: {:?}", task);
@@ -759,15 +814,15 @@ impl<'a> Downloader<'a> {
         
 
         if !self.should_download {
-            info!("Found media at: {}", task.url);
-            *self.skipped.lock().unwrap() += 1;
+            let msg = format!("Found media at: {}", task.url);
+            self.skip(&msg);
             return
         }
         let file_name = self.get_filename(&task);
 
         if check_path_present(&file_name) {
-            debug!("Media from url {} already downloaded. Skipping...", task.url);
-            *self.skipped.lock().unwrap() += 1;
+            let msg = format!("Media from url {} already downloaded. Skipping...", task.url);
+            self.skip(&msg);
             return
         }
 
@@ -785,12 +840,10 @@ impl<'a> Downloader<'a> {
                 
             }
             Ok(false) => {
-                warn!("Failed to download media from url: {}", task.url);
-                *self.failed.lock().unwrap() += 1;
+                self.fail(&format!("Failed to download media from url: {}", task.url));
             }
             Err(e) => {
-                error!("Failed to download media from url: {}. Error: {}", task.url, e);
-                *self.failed.lock().unwrap() += 1;
+                self.fail(&format!("Error while downloading media from url {}: {}", task.url, e));
             }
         }
 
