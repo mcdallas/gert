@@ -51,6 +51,9 @@ pub struct Listing {
 }
 
 #[derive(Debug)]
+// When fetching directly from a post, we only care about the first listing and not the comments
+// so we only deserialize the first listing. Comments break deserialization because they are missing
+// a lot of fields.
 pub struct SingleListing(pub Listing);
 
 #[derive(Deserialize, Debug)]
