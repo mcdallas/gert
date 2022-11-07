@@ -185,6 +185,15 @@ pub struct GfyItem {
     #[serde(rename = "mp4Url")]
     pub mp4_url: String,
 }
+#[derive(Deserialize, Debug, Clone)]
+pub struct StreamableApiResponse {
+    pub files: HashMap<String, StreamableFile>,
+}
+
+#[derive(Deserialize, Debug, Clone)]
+pub struct StreamableFile {
+    pub url: Option<String>,
+}
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct Summary {
@@ -269,6 +278,9 @@ impl Post {
             } else {
                 return MediaType::ImgurUnknown;
             }
+        }
+        if url.contains(STREAMABLE_DOMAIN) {
+            return MediaType::StreamableVideo;
         }
         MediaType::Unsupported
     }

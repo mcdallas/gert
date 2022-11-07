@@ -1,3 +1,4 @@
+use std::borrow::Borrow;
 use std::fs::File;
 use std::path::Path;
 use std::process::Stdio;
@@ -9,7 +10,7 @@ use reqwest::StatusCode;
 use url::{Position, Url};
 
 use crate::errors::GertError;
-use crate::structures::GfyData;
+use crate::structures::{GfyData, StreamableApiResponse};
 use crate::structures::Post;
 use crate::utils::{check_path_present, check_url_has_mime_type};
 
@@ -42,6 +43,9 @@ static GIPHY_MEDIA_SUBDOMAIN_2: &str = "media2.giphy.com";
 static GIPHY_MEDIA_SUBDOMAIN_3: &str = "media3.giphy.com";
 static GIPHY_MEDIA_SUBDOMAIN_4: &str = "media4.giphy.com";
 
+pub static STREAMABLE_DOMAIN : &str = "streamable.com";
+static STREAMABLE_API : &str = "https://api.streamable.com/videos";
+
 /// Media Types Supported
 #[derive(Debug, PartialEq, Eq)]
 pub enum MediaType {
@@ -55,6 +59,7 @@ pub enum MediaType {
     ImgurGif,
     ImgurAlbum,
     ImgurUnknown,
+    StreamableVideo,
     Unsupported,
 }
 
@@ -229,6 +234,7 @@ impl<'a> Downloader<'a> {
             MediaType::ImgurImage => self.download_imgur_image(post).await,
             MediaType::ImgurAlbum => self.download_imgur_album(post).await,
             MediaType::ImgurUnknown => self.download_imgur_unknown(post).await,
+            MediaType::StreamableVideo => self.download_streamable_video(post).await,
             _ => {
                 debug!("Unsupported URL: {:?}", post.get_url());
                 *self.unsupported.lock().unwrap() += 1;
@@ -486,6 +492,38 @@ impl<'a> Downloader<'a> {
 
         let task = DownloadTask::from_post(post, url, ZIP_EXTENSION.to_owned(), None);
         self.schedule_task(task).await;
+    }
+
+    async fn download_streamable_video(&self, post: &Post) {
+        let url = post.get_url().unwrap();
+        let parsed = Url::parse(&url).unwrap();
+        let video_id = &parsed[Position::AfterHost..Position::AfterPath];
+        let streamable_url = format!("{}{}", STREAMABLE_API, video_id);
+        let response = match self.session.get(&streamable_url).send().await {
+            Ok(response) => response,
+            Err(e) => {
+                self.fail(&format!("Error contacting streamable API: {}", e));
+                return;
+            }
+        };
+        let parsed = match response.json::<StreamableApiResponse>().await {
+            Ok(j) => j,
+            Err(e) => {
+                self.fail(&format!("Error parsing streamable API response: {}", e));
+                return;
+            }
+        };
+
+        if parsed.files.contains_key(MP4_EXTENSION) {
+            let video_url = parsed.files.get(MP4_EXTENSION).unwrap().url.borrow().to_owned().unwrap();
+            let ext = MP4_EXTENSION.to_owned();
+    
+            let task = DownloadTask::from_post(post, video_url, ext , None);
+            self.schedule_task(task).await;
+        } else {
+            self.fail("No mp4 file found in streamable API response");
+        }
+
     }
 
     fn fail(&self, msg: &str) {
