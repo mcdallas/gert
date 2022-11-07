@@ -209,13 +209,12 @@ impl Add for Summary {
 }
 
 use crate::download::*;
-use log::{debug, warn};
+use log::warn;
 use url::{Position, Url};
 impl Post {
     pub fn get_url(&self) -> Option<String> {
         let original = self.data.url.as_ref().unwrap();
-        if let Ok(u) = Url::parse(original) {
-            let mut parsed = u.clone();
+        if let Ok(mut parsed) = Url::parse(original) {
             match parsed.path_segments_mut() {
                 Ok(mut p) => p.pop_if_empty(),
                 Err(_) => return None,
@@ -272,6 +271,6 @@ impl Post {
             }
         }
 
-        return MediaType::Unsupported;
+        MediaType::Unsupported
     }
 }

@@ -75,10 +75,7 @@ pub async fn check_url_has_mime_type(
         None => Ok(false),
         Some(content_type) => {
             let content_type = Mime::from_str(content_type.to_str()?)?;
-            let success = match content_type.subtype() {
-                mime_type => true,
-                _ => false,
-            };
+            let success = matches!(content_type.subtype(), mime_type);
             debug!("Checking if URL has mime type {}, success: {}", mime_type, success);
             Ok(success)
         }
