@@ -37,5 +37,4 @@ pub enum GertError {
     FfmpegError(String),
     #[error("Error unzipping file")]
     ZipError(#[from] zip::result::ZipError),
-    
 }

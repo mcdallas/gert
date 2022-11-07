@@ -208,8 +208,8 @@ impl Add for Summary {
     }
 }
 
-use log::{debug, warn};
 use crate::download::*;
+use log::{debug, warn};
 use url::{Position, Url};
 impl Post {
     pub fn get_url(&self) -> Option<String> {
@@ -267,7 +267,6 @@ impl Post {
                 } else {
                     warn!("Unsupported imgur URL: {}", url);
                 };
-
             } else {
                 return MediaType::ImgurUnknown;
             }

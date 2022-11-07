@@ -55,7 +55,7 @@ async fn main() -> Result<(), GertError> {
                 .long("match")
                 .value_name("MATCH")
                 .help("Pass a regex expresion to filter the title of the post")
-                .takes_value(true)
+                .takes_value(true),
         )
         .arg(
             Arg::with_name("output_directory")
@@ -93,7 +93,7 @@ async fn main() -> Result<(), GertError> {
                 .value_name("LIMIT")
                 .help("Limit the number of posts to download")
                 .takes_value(true)
-                .default_value("25")
+                .default_value("25"),
         )
         .arg(
             Arg::with_name("subreddits")
@@ -115,7 +115,7 @@ async fn main() -> Result<(), GertError> {
                 .help("Time period to download from")
                 .takes_value(true)
                 .possible_values(&["now", "hour", "day", "week", "month", "year", "all"])
-                .default_value("day")
+                .default_value("day"),
         )
         .arg(
             Arg::with_name("feed")
@@ -125,7 +125,7 @@ async fn main() -> Result<(), GertError> {
                 .help("Feed to download from")
                 .takes_value(true)
                 .possible_values(&["hot", "new", "top", "rising"])
-                .default_value("hot")
+                .default_value("hot"),
         )
         .get_matches();
 
@@ -268,9 +268,9 @@ async fn main() -> Result<(), GertError> {
         let url = format!("{}.json", url);
         let single_listing: SingleListing = match session.get(&url).send().await {
             Ok(response) => response.json().await.map_err(|_| GertError::JsonParseError(url))?,
-            Err(_) => exit(&format!("Error fetching data from {}", &url))
+            Err(_) => exit(&format!("Error fetching data from {}", &url)),
         };
-        
+
         let post = single_listing.0.data.children.into_iter().next().unwrap();
         if post.data.url.is_none() {
             exit("Post contains no media")

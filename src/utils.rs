@@ -1,11 +1,11 @@
 use crate::errors::GertError;
+use log::debug;
 use mime::Mime;
 use reqwest::header::CONTENT_TYPE;
 use std::env;
 use std::path::Path;
 use std::str::FromStr;
 use which::which;
-use log::debug;
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
@@ -63,7 +63,10 @@ pub fn application_present(name: String) -> bool {
 //     }
 // }
 
-pub async fn check_url_has_mime_type(url: &str, mime_type: mime::Name<'_>) -> Result<bool, GertError> {
+pub async fn check_url_has_mime_type(
+    url: &str,
+    mime_type: mime::Name<'_>,
+) -> Result<bool, GertError> {
     let client = reqwest::Client::new();
     let response = client.head(url).send().await?;
     let headers = response.headers();
