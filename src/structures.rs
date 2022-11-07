@@ -137,6 +137,8 @@ pub struct PostData {
     pub is_video: Option<bool>,
     /// Reddit Media info
     pub media: Option<PostMedia>,
+
+    pub is_self: bool,
 }
 
 #[derive(Deserialize, Debug, Clone)]
@@ -268,7 +270,7 @@ impl Post {
                 return MediaType::ImgurAlbum;
             }
             if url.contains(IMGUR_SUBDOMAIN) {
-                if url.ends_with(GIFV_EXTENSION) {
+                if url.ends_with(GIFV_EXTENSION) || url.ends_with(GIF_EXTENSION) {
                     return MediaType::ImgurGif;
                 } else if url.ends_with(PNG_EXTENSION) || url.ends_with(JPG_EXTENSION) {
                     return MediaType::ImgurImage;

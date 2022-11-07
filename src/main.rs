@@ -280,7 +280,7 @@ async fn main() -> Result<(), GertError> {
         for subreddit in &subreddits {
             let listing = Subreddit::new(subreddit).get_feed(feed, limit, period).await?;
             posts.extend(
-                listing.data.children.into_iter().filter(|post| post.data.url.is_some()).filter(
+                listing.data.children.into_iter().filter(|post| post.data.url.is_some() && !post.data.is_self).filter(
                     |post| pattern.is_match(post.data.title.as_ref().unwrap_or(&"".to_string())),
                 ),
             );
