@@ -212,7 +212,7 @@ use log::{debug, warn};
 use crate::download::*;
 use url::{Position, Url};
 impl Post {
-    fn get_url(&self) -> Option<String> {
+    pub fn get_url(&self) -> Option<String> {
         let original = self.data.url.as_ref().unwrap();
         if let Ok(u) = Url::parse(original) {
             let mut parsed = u.clone();
