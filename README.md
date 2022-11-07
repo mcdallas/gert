@@ -17,7 +17,7 @@ A command line tool to download media from Reddit
 There is a soft dependency on ffmpeg, for installation instructions follow this [link](https://www.ffmpeg.org/download.html).
 
 You can skip it but without it:
-* Videos hosted on reddit itself (v.reddit.com) won't have sound
+* Videos hosted on reddit itself (v.redd.it) won't have sound
 * Gifs won't be automatically converted to .mp4
 
 #### Using cargo
@@ -26,6 +26,17 @@ If you already have Rust installed, you can install using `cargo`:
 ```shell script
 cargo install gert
 ```
+
+#### Using homebrew
+
+```shell script
+brew tap mcdallas/gert
+brew install gert
+```
+
+#### Github Release
+
+just grab the [latest release](https://github.com/mcdallas/gert/releases/latest) for your OS 
 
 ## Running
 
