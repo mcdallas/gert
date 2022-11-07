@@ -110,7 +110,7 @@ impl<'a> Downloader<'a> {
         info!("#####################################");
         info!("Download Summary:");
         info!("Number of supported media: {}", *self.supported.lock().unwrap());
-        info!("Number of unsupported media: {}", *self.unsupported.lock().unwrap());
+        info!("Number of unsupported links: {}", *self.unsupported.lock().unwrap());
         info!("Number of media downloaded: {}", *self.downloaded.lock().unwrap());
         info!("Number of media skipped: {}", *self.skipped.lock().unwrap());
         info!("Number of media failed to download: {}", *self.failed.lock().unwrap());
