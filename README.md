@@ -70,6 +70,7 @@ OPTIONS:
     -o, --output <DATA_DIR>           Directory to save the media to [default: .]
     -p, --period <PERIOD>             Time period to download from [default: day]  [possible values: now, hour, day, week, month, year, all]
     -s, --subreddit <SUBREDDIT>...    Download media from these subreddit
+    -u, --upvotes <NUM>               Minimum number of upvotes to download [default: 0]
 ```
 
 

@@ -10,8 +10,8 @@ use reqwest::StatusCode;
 use url::{Position, Url};
 
 use crate::errors::GertError;
-use crate::structures::{GfyData, StreamableApiResponse};
 use crate::structures::Post;
+use crate::structures::{GfyData, StreamableApiResponse};
 use crate::utils::{check_path_present, check_url_has_mime_type};
 
 pub static JPG_EXTENSION: &str = "jpg";
@@ -43,8 +43,8 @@ static GIPHY_MEDIA_SUBDOMAIN_2: &str = "media2.giphy.com";
 static GIPHY_MEDIA_SUBDOMAIN_3: &str = "media3.giphy.com";
 static GIPHY_MEDIA_SUBDOMAIN_4: &str = "media4.giphy.com";
 
-pub static STREAMABLE_DOMAIN : &str = "streamable.com";
-static STREAMABLE_API : &str = "https://api.streamable.com/videos";
+pub static STREAMABLE_DOMAIN: &str = "streamable.com";
+static STREAMABLE_API: &str = "https://api.streamable.com/videos";
 
 /// Media Types Supported
 #[derive(Debug, PartialEq, Eq)]
@@ -515,15 +515,15 @@ impl<'a> Downloader<'a> {
         };
 
         if parsed.files.contains_key(MP4_EXTENSION) {
-            let video_url = parsed.files.get(MP4_EXTENSION).unwrap().url.borrow().to_owned().unwrap();
+            let video_url =
+                parsed.files.get(MP4_EXTENSION).unwrap().url.borrow().to_owned().unwrap();
             let ext = MP4_EXTENSION.to_owned();
-    
-            let task = DownloadTask::from_post(post, video_url, ext , None);
+
+            let task = DownloadTask::from_post(post, video_url, ext, None);
             self.schedule_task(task).await;
         } else {
             self.fail("No mp4 file found in streamable API response");
         }
-
     }
 
     fn fail(&self, msg: &str) {

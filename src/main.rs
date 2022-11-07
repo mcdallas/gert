@@ -39,7 +39,7 @@ async fn main() -> Result<(), GertError> {
                 .help("URL of a single post to download")
                 .takes_value(true)
                 .required_unless("subreddit")
-                .conflicts_with_all(&["subreddit", "period", "feed", "limit", "match"]),
+                .conflicts_with_all(&["subreddit", "period", "feed", "limit", "match", "upvotes"]),
         )
         .arg(
             Arg::with_name("environment")
@@ -127,6 +127,15 @@ async fn main() -> Result<(), GertError> {
                 .possible_values(&["hot", "new", "top", "rising"])
                 .default_value("hot"),
         )
+        .arg(
+            Arg::with_name("upvotes")
+                .short("u")
+                .long("upvotes")
+                .value_name("NUM")
+                .help("Minimum number of upvotes to download")
+                .takes_value(true)
+                .default_value("0"),
+        )
         .get_matches();
 
     let env_file = matches.value_of("environment");
@@ -138,6 +147,11 @@ async fn main() -> Result<(), GertError> {
     // generate human readable file names instead of MD5 Hashed file names
     let use_human_readable = matches.is_present("human_readable");
     // restrict downloads to these subreddits
+    let upvotes = matches
+        .value_of("upvotes")
+        .unwrap()
+        .parse::<i64>()
+        .unwrap_or_else(|_| exit("Upvotes must be a number"));
 
     let subreddits: Vec<&str> = match matches.is_present("subreddits") {
         true => matches.values_of("subreddits").unwrap().collect(),
@@ -280,9 +294,16 @@ async fn main() -> Result<(), GertError> {
         for subreddit in &subreddits {
             let listing = Subreddit::new(subreddit).get_feed(feed, limit, period).await?;
             posts.extend(
-                listing.data.children.into_iter().filter(|post| post.data.url.is_some() && !post.data.is_self).filter(
-                    |post| pattern.is_match(post.data.title.as_ref().unwrap_or(&"".to_string())),
-                ),
+                listing
+                    .data
+                    .children
+                    .into_iter()
+                    .filter(|post| {
+                        post.data.url.is_some() && !post.data.is_self && post.data.score > upvotes
+                    })
+                    .filter(|post| {
+                        pattern.is_match(post.data.title.as_ref().unwrap_or(&"".to_string()))
+                    }),
             );
         }
     }
