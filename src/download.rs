@@ -230,6 +230,7 @@ impl<'a> Downloader<'a> {
             MediaType::ImgurAlbum => self.download_imgur_album(post).await,
             MediaType::ImgurUnknown => self.download_imgur_unknown(post).await,
             _ => {
+                debug!("Unsupported URL: {:?}", post.get_url());
                 *self.unsupported.lock().unwrap() += 1;
             }
         }
@@ -570,7 +571,6 @@ impl<'a> Downloader<'a> {
                 .stdout(Stdio::null())
                 .stderr(Stdio::null())
                 .spawn()?;
-            debug!("Executing command: {:#?}", command);
 
             let status = command.wait().await?;
             if status.success() {
@@ -634,7 +634,7 @@ impl<'a> Downloader<'a> {
 
         let status = command.wait().await?;
         if status.success() {
-            // Cleanup the gif
+            // Cleanup the single streams
             fs::remove_file(video_path)?;
             fs::remove_file(audio_path)?;
 

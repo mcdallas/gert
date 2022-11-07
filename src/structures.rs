@@ -270,7 +270,6 @@ impl Post {
                 return MediaType::ImgurUnknown;
             }
         }
-
         MediaType::Unsupported
     }
 }
