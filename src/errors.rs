@@ -34,5 +34,8 @@ pub enum GertError {
     #[error("Error parsing JSON from {0}")]
     JsonParseError(String),
     #[error("Ffmpeg error {0}")]
-    FfmpegError(String)
+    FfmpegError(String),
+    #[error("Error unzipping file")]
+    ZipError(#[from] zip::result::ZipError),
+    
 }

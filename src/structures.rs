@@ -256,6 +256,9 @@ impl Post {
             return MediaType::GiphyGif;
         }
         if url.contains(IMGUR_DOMAIN) {
+            if url.contains(format!("{}/a/", IMGUR_DOMAIN).as_str()) {
+                return MediaType::ImgurAlbum;
+            }
             if url.contains(IMGUR_SUBDOMAIN) {
                 if url.ends_with(GIFV_EXTENSION) {
                     return MediaType::ImgurGif;
@@ -264,8 +267,9 @@ impl Post {
                 } else {
                     warn!("Unsupported imgur URL: {}", url);
                 };
+
             } else {
-                warn!("Unsupported imgur Subdomain: {}", url);
+                return MediaType::ImgurUnknown;
             }
         }
 

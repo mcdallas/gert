@@ -5,6 +5,7 @@ use std::env;
 use std::path::Path;
 use std::str::FromStr;
 use which::which;
+use log::debug;
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
@@ -44,24 +45,42 @@ pub fn application_present(name: String) -> bool {
 }
 
 /// Check if the given URL contains an MP4 track using the content type
-pub async fn check_url_is_mp4(url: &str) -> Result<Option<bool>, GertError> {
-    let response = reqwest::get(url).await?;
+// pub async fn check_url_is_mp4(url: &str) -> Result<Option<bool>, GertError> {
+//     let response = reqwest::get(url).await?;
+//     let headers = response.headers();
+
+//     match headers.get(CONTENT_TYPE) {
+//         None => Ok(None),
+//         Some(content_type) => {
+//             let content_type = Mime::from_str(content_type.to_str()?)?;
+//             let is_video = match (content_type.type_(), content_type.subtype()) {
+//                 (mime::VIDEO, mime::MP4) => true,
+//                 (mime::APPLICATION, mime::XML) => false,
+//                 _ => false,
+//             };
+//             Ok(Some(is_video))
+//         }
+//     }
+// }
+
+pub async fn check_url_has_mime_type(url: &str, mime_type: mime::Name<'_>) -> Result<bool, GertError> {
+    let client = reqwest::Client::new();
+    let response = client.head(url).send().await?;
     let headers = response.headers();
 
     match headers.get(CONTENT_TYPE) {
-        None => Ok(None),
+        None => Ok(false),
         Some(content_type) => {
             let content_type = Mime::from_str(content_type.to_str()?)?;
-            let is_video = match (content_type.type_(), content_type.subtype()) {
-                (mime::VIDEO, mime::MP4) => true,
-                (mime::APPLICATION, mime::XML) => false,
+            let success = match content_type.subtype() {
+                mime_type => true,
                 _ => false,
             };
-            Ok(Some(is_video))
+            debug!("Checking if URL has mime type {}, success: {}", mime_type, success);
+            Ok(success)
         }
     }
 }
-
 pub struct UserEnv {
     pub username: String,
     pub password: String,
