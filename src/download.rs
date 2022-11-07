@@ -43,7 +43,7 @@ static GIPHY_MEDIA_SUBDOMAIN_3: &str = "media3.giphy.com";
 static GIPHY_MEDIA_SUBDOMAIN_4: &str = "media4.giphy.com";
 
 /// Media Types Supported
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum MediaType {
     Gallery,
     RedditImage,
@@ -523,20 +523,20 @@ impl<'a> Downloader<'a> {
                 info!("Downloaded media from url: {}", task.url);
                 *self.downloaded.lock().unwrap() += 1;
                 match self.post_process(file_name, &task).await {
-                    Ok(filepath) => return Some(filepath),
+                    Ok(filepath) => Some(filepath),
                     Err(e) => {
                         error!("Error while post processing: {}", e);
-                        return None;
+                        None
                     }
                 }
             }
             Ok(false) => {
                 self.fail(&format!("Failed to download media from url: {}", task.url));
-                return None;
+                None
             }
             Err(e) => {
                 self.fail(&format!("Error while downloading media from url {}: {}", task.url, e));
-                return None;
+                None
             }
         }
     }
