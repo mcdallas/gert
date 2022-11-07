@@ -5,17 +5,20 @@ A command line tool to download media from Reddit
 * Supports:
   - Reddit: PNG/JPG images, GIFs, Image galleries, videos
   - Giphy: GIFs
-  - Imgur: Direct images and GIFVs
+  - Imgur: Direct images, GIFVs and albums
   - Gfycat/Redgifs: GIFs
+  - Streamable: videos
 * GIF/GIFV from Imgur/Gfycat/Redgifs are downloaded as mp4
-* Does *not* support downloading images from Imgur post links
 
 ## Installation
 
 ### Prerequisites 
 
-To download videos hosted by Reddit, you need to have ffmpeg installed.
-Follow this [link](https://www.ffmpeg.org/download.html) for installation instructions.
+There is a soft dependency on ffmpeg, for installation instructions follow this [link](https://www.ffmpeg.org/download.html).
+
+You can skip it but without it:
+* Videos hosted on reddit itself (v.reddit.com) won't have sound
+* Gifs won't be automatically converted to .mp4
 
 #### Using cargo
 

@@ -137,6 +137,8 @@ pub struct PostData {
     pub is_video: Option<bool>,
     /// Reddit Media info
     pub media: Option<PostMedia>,
+
+    pub is_self: bool,
 }
 
 #[derive(Deserialize, Debug, Clone)]
@@ -185,6 +187,15 @@ pub struct GfyItem {
     #[serde(rename = "mp4Url")]
     pub mp4_url: String,
 }
+#[derive(Deserialize, Debug, Clone)]
+pub struct StreamableApiResponse {
+    pub files: HashMap<String, StreamableFile>,
+}
+
+#[derive(Deserialize, Debug, Clone)]
+pub struct StreamableFile {
+    pub url: Option<String>,
+}
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct Summary {
@@ -205,5 +216,74 @@ impl Add for Summary {
             media_downloaded: self.media_downloaded + rhs.media_downloaded,
             media_skipped: self.media_skipped + rhs.media_skipped,
         }
+    }
+}
+
+use crate::download::*;
+use log::warn;
+use url::{Position, Url};
+impl Post {
+    pub fn get_url(&self) -> Option<String> {
+        let original = self.data.url.as_ref().unwrap();
+        if let Ok(mut parsed) = Url::parse(original) {
+            match parsed.path_segments_mut() {
+                Ok(mut p) => p.pop_if_empty(),
+                Err(_) => return None,
+            };
+            return Some(parsed[..Position::AfterPath].to_owned());
+        }
+        None
+    }
+
+    pub fn get_type(&self) -> MediaType {
+        if self.data.gallery_data.is_some() && self.data.media_metadata.is_some() {
+            return MediaType::Gallery;
+        }
+        let url = match self.get_url() {
+            Some(u) => u,
+            None => return MediaType::Unsupported,
+        };
+
+        if url.contains(REDDIT_IMAGE_SUBDOMAIN) {
+            // if the URL uses the reddit image subdomain and if the extension is
+            // jpg, png or gif, then we can use the URL as is.
+            if url.ends_with(JPG_EXTENSION) || url.ends_with(PNG_EXTENSION) {
+                return MediaType::RedditImage;
+            } else if url.ends_with(GIF_EXTENSION) {
+                return MediaType::RedditGif;
+            } else {
+                warn!("Unsupported reddit URL: {}", url);
+            }
+        }
+        if url.contains(REDDIT_VIDEO_SUBDOMAIN) {
+            return MediaType::RedditVideo;
+        }
+
+        if url.contains(GFYCAT_DOMAIN) || url.contains(REDGIFS_DOMAIN) {
+            return MediaType::GfycatGif;
+        }
+        if url.contains(GIPHY_DOMAIN) {
+            return MediaType::GiphyGif;
+        }
+        if url.contains(IMGUR_DOMAIN) {
+            if url.contains(format!("{}/a/", IMGUR_DOMAIN).as_str()) {
+                return MediaType::ImgurAlbum;
+            }
+            if url.contains(IMGUR_SUBDOMAIN) {
+                if url.ends_with(GIFV_EXTENSION) || url.ends_with(GIF_EXTENSION) {
+                    return MediaType::ImgurGif;
+                } else if url.ends_with(PNG_EXTENSION) || url.ends_with(JPG_EXTENSION) {
+                    return MediaType::ImgurImage;
+                } else {
+                    warn!("Unsupported imgur URL: {}", url);
+                };
+            } else {
+                return MediaType::ImgurUnknown;
+            }
+        }
+        if url.contains(STREAMABLE_DOMAIN) {
+            return MediaType::StreamableVideo;
+        }
+        MediaType::Unsupported
     }
 }

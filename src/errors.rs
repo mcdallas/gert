@@ -32,5 +32,9 @@ pub enum GertError {
     #[error("Could not convert from string")]
     FromStringConversionError(#[from] FromStrError),
     #[error("Error parsing JSON from {0}")]
-    JsonParseError(String)
+    JsonParseError(String),
+    #[error("Ffmpeg error {0}")]
+    FfmpegError(String),
+    #[error("Error unzipping file")]
+    ZipError(#[from] zip::result::ZipError),
 }
