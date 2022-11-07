@@ -14,7 +14,7 @@ A command line tool to download media from Reddit
 
 ### Prerequisites 
 
-There is an soft dependency on ffmpeg, for installation instructions follow this [link](https://www.ffmpeg.org/download.html).
+There is a soft dependency on ffmpeg, for installation instructions follow this [link](https://www.ffmpeg.org/download.html).
 
 You can skip it but without it:
 * Videos hosted on reddit itself (v.reddit.com) won't have sound
