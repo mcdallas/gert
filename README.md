@@ -87,7 +87,7 @@ OPTIONS:
 
 
 
-### Authenticating with Reddit
+### Optional Authentication with Reddit
 
 Authentication is not required but if you want a more generous rate limit you can create a new app in reddit and pass your credentials to gert
 
