@@ -130,14 +130,21 @@ impl<'a> Downloader<'a> {
         title: &str,
         index: Option<usize>,
     ) -> String {
+        let idx = index.unwrap_or(0);
+
         return if !self.use_human_readable {
             // create a hash for the media using the URL the media is located at
             // this helps to make sure the media download always writes the same file
             // name irrespective of how many times it's run. If run more than once, the
             // media is overwritten by this method
-            let hash = md5::compute(url);
 
-            if let Some(idx) = index {
+            // Strip params from url
+            let mut parsed = Url::parse(url).unwrap();
+            parsed.set_query(None);
+            parsed.set_fragment(None);
+            let hash = md5::compute(parsed.as_str());
+
+            if idx > 0 {
                 format!("{}/{}/{:x}_{}.{}", self.data_directory, subreddit, hash, idx, extension)
             } else {
                 format!("{}/{}/{:x}.{}", self.data_directory, subreddit, hash, extension)
@@ -167,12 +174,9 @@ impl<'a> Downloader<'a> {
                 .collect();
             // create a canonical human readable file name using the post's title
             // note that the name of the post is something of the form t3_<randomstring>
-            let canonical_name: String = if index.is_none() {
-                String::from(name)
-            } else {
-                format!("{}_{}", name, index.unwrap())
-            }
-            .replace('.', "_");
+            let canonical_name: String =
+                if idx == 0 { String::from(name) } else { format!("{}_{}", name, idx) }
+                    .replace('.', "_");
             format!(
                 "{}/{}/{}_{}.{}",
                 self.data_directory, subreddit, canonical_title, canonical_name, extension
@@ -484,8 +488,6 @@ impl<'a> Downloader<'a> {
 
     async fn download_imgur_album(&self, post: &Post) {
         let url = post.data.url.as_ref().unwrap();
-        // let parsed = Url::parse(url).unwrap();
-        // let path = &parsed[Position::AfterHost..Position::AfterPath];
         let mut tokens = url.split('/').collect::<Vec<&str>>();
         tokens.push("zip");
         let url = tokens.join("/");
@@ -549,7 +551,9 @@ impl<'a> Downloader<'a> {
         }
         let file_name = self.get_filename(&task);
 
-        if check_path_present(&file_name) || check_path_present(&file_name.replace(".gif", ".mp4"))
+        if check_path_present(&file_name)
+            || check_path_present(&file_name.replace(".gif", ".mp4"))
+            || check_path_present(&file_name.replace(".zip", ".jpg"))
         {
             let msg = format!("Media from url {} already downloaded. Skipping...", task.url);
             self.skip(&msg);
@@ -559,7 +563,6 @@ impl<'a> Downloader<'a> {
         let result = self.download_media(&file_name, &task.url).await;
         match result {
             Ok(true) => {
-                info!("Downloaded media from url: {}", task.url);
                 *self.downloaded.lock().unwrap() += 1;
                 match self.post_process(file_name, &task).await {
                     Ok(filepath) => Some(filepath),
