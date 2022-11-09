@@ -511,7 +511,7 @@ impl<'a> Downloader<'a> {
         let parsed = match response.json::<StreamableApiResponse>().await {
             Ok(j) => j,
             Err(e) => {
-                self.fail(&format!("Error parsing streamable API response: {}", e));
+                self.fail(&format!("Error parsing streamable API response from {}: {}", streamable_url, e));
                 return;
             }
         };
@@ -563,7 +563,11 @@ impl<'a> Downloader<'a> {
         let result = self.download_media(&file_name, &task.url).await;
         match result {
             Ok(true) => {
-                *self.downloaded.lock().unwrap() += 1;
+
+                {
+                    *self.downloaded.lock().unwrap() += 1;
+                }
+                
                 match self.post_process(file_name, &task).await {
                     Ok(filepath) => Some(filepath),
                     Err(e) => {
