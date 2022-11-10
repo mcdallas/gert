@@ -8,6 +8,7 @@ use std::{fs, io};
 use log::{debug, error, info, warn};
 use reqwest::StatusCode;
 use url::{Position, Url};
+use anyhow::{Context, Result, bail, anyhow};
 
 use crate::errors::GertError;
 use crate::structures::Post;
@@ -227,7 +228,7 @@ impl<'a> Downloader<'a> {
 
     async fn process(&self, post: &Post) {
         debug!("type is : {:?}", post.get_type());
-        match post.get_type() {
+        let result = match post.get_type() {
             MediaType::Gallery => self.download_gallery(post).await,
             MediaType::RedditImage => self.download_reddit_image(post).await,
             MediaType::RedditGif => self.download_reddit_image(post).await,
@@ -242,11 +243,15 @@ impl<'a> Downloader<'a> {
             _ => {
                 debug!("Unsupported URL: {:?}", post.get_url());
                 *self.unsupported.lock().unwrap() += 1;
+                Ok(())
             }
+        };
+        if let Err(e) = result {
+            self.fail(e);
         }
     }
 
-    async fn download_gallery(&self, post: &Post) {
+    async fn download_gallery(&self, post: &Post) -> Result<()> {
         let gallery = post.data.gallery_data.as_ref().unwrap();
         let media_metadata = post.data.media_metadata.as_ref().unwrap();
 
@@ -260,16 +265,18 @@ impl<'a> Downloader<'a> {
             let task = DownloadTask::from_post(post, url, ext.to_owned(), Some(index));
             self.schedule_task(task).await;
         }
+        Ok(())
     }
 
-    async fn download_reddit_image(&self, post: &Post) {
+    async fn download_reddit_image(&self, post: &Post) -> Result<()> {
         let url = post.get_url().unwrap();
         let extension = url.split('.').last().unwrap();
         let task = DownloadTask::from_post(post, url.to_owned(), extension.to_owned(), None);
         self.schedule_task(task).await;
+        Ok(())
     }
 
-    async fn download_gfycat(&self, post: &Post) {
+    async fn download_gfycat(&self, post: &Post) -> Result<()> {
         let url = post.data.url.as_ref().unwrap();
         let extension = url.split('.').last().unwrap();
         match extension {
@@ -285,49 +292,35 @@ impl<'a> Downloader<'a> {
                 } else {
                     REDGIFS_API_PREFIX
                 };
-                if let Some(media_id) = url.split('/').last() {
-                    let api_url = format!("{}/{}", api_prefix, media_id);
-                    debug!("GFY API URL: {}", api_url);
+                let media_id = url.split('/').last().with_context(|| format!("Unsupported Gfycat URL: {}", url))?;
 
-                    // talk to gfycat API and get GIF information
-                    let response = match self.session.get(&api_url).send().await {
-                        Ok(response) => response,
-                        Err(_) => {
-                            self.fail("Error getting response from GFYCAT API");
-                            return;
-                        }
-                    };
-                    // if the gif is not available anymore, Gfycat might send
-                    // a 404 response. Proceed to get the mp4 URL only if the
-                    // response was HTTP 200
-                    if response.status() == StatusCode::OK {
-                        let data = match response.json::<GfyData>().await {
-                            Ok(data) => data,
-                            Err(_) => {
-                                self.fail("Error parsing response from GFYCAT API");
-                                return;
-                            }
-                        };
-                        let task = DownloadTask::from_post(
-                            post,
-                            data.gfy_item.mp4_url,
-                            MP4_EXTENSION.to_owned(),
-                            None,
-                        );
-                        self.schedule_task(task).await;
-                    } else {
-                        let msg = format!("Gfycat API returned status code: {}", response.status());
-                        self.fail(&msg);
-                    }
+                let api_url = format!("{}/{}", api_prefix, media_id);
+                debug!("GFY API URL: {}", api_url);
+
+                // talk to gfycat API and get GIF information
+                let response = self.session.get(&api_url).send().await.context("Error getting response from GFYCAT API")?;
+                // if the gif is not available anymore, Gfycat might send
+                // a 404 response. Proceed to get the mp4 URL only if the
+                // response was HTTP 200
+                if response.status() == StatusCode::OK {
+                    let data = response.json::<GfyData>().await.context("Error parsing JSON response from GFYCAT API")?;
+                    let task = DownloadTask::from_post(
+                        post,
+                        data.gfy_item.mp4_url,
+                        MP4_EXTENSION.to_owned(),
+                        None,
+                    );
+                    self.schedule_task(task).await;
                 } else {
-                    let msg = format!("Unsupported Gfycat URL: {}", url);
-                    self.fail(&msg);
+                    bail!("Gfycat API returned status code: {}", response.status());
                 }
+
             }
         }
+        Ok(())
     }
 
-    async fn download_reddit_video(&self, post: &Post) {
+    async fn download_reddit_video(&self, post: &Post) -> Result<()> {
         let post_url = post.data.url.as_ref().unwrap();
         let extension = post_url.split('.').last().unwrap();
 
@@ -341,74 +334,59 @@ impl<'a> Downloader<'a> {
                 // if the URL uses the reddit video subdomain, but the link does not
                 // point directly to the mp4, then use the fallback URL to get the
                 // appropriate link. The video quality might range from 96p to 720p
-                match &post.data.media {
-                    Some(media) => match &media.reddit_video {
-                        Some(video) => video.fallback_url.replace("?source=fallback", ""),
-                        None => {
-                            self.fail("No fallback URL found for reddit video");
-                            return;
-                        }
-                    },
-                    None => {
-                        self.fail("No media data found in post");
-                        return;
-                    }
-                }
+                post.data.media.as_ref().context("No media data found")?.reddit_video.as_ref().context("No fallback url found in reddit video")?.fallback_url.replace("?source=fallback", "").clone()
             }
         };
-        let mut video_task: Option<DownloadTask> = None;
+
         let mut audio_task: Option<DownloadTask> = None;
 
-        if let Some(dash_video) = url.split('/').last() {
-            if !dash_video.contains("DASH") {
-                self.fail("Cannot extract video url from reddit video");
-                return;
+        let dash_video = url.split('/').last().context(format!("Unsupported reddit video URL: {}", url))?;
+
+        if !dash_video.contains("DASH") {
+            bail!("Cannot extract video url from reddit video");
+        }
+        // todo: find exhaustive collection of these, or figure out if they are (x, x*2) pairs
+        let dash_video_only = vec!["DASH_1_2_M", "DASH_2_4_M", "DASH_4_8_M"];
+        let ext = url.split('.').last().unwrap().to_owned();
+        let video_task = DownloadTask::from_post(post, url.clone(), ext, None);
+        if !dash_video_only.contains(&dash_video) & self.ffmpeg_available {
+            let all = &url.split('/').collect::<Vec<&str>>();
+            let mut result = all.split_last().unwrap().1.to_vec();
+            result.push("DASH_audio.mp4");
+            // dynamically generate audio URLs for reddit videos by changing the video URL
+            let maybe_audio_url = result.join("/");
+            // Check the mime type to see the generated URL contains an audio file
+            // This can be done by checking the content type header for the given URL
+            // Reddit API response does not seem to expose any easy way to figure this out
+            if let Ok(exists) = check_url_has_mime_type(&maybe_audio_url, mime::MP4).await {
+                if exists {
+                    audio_task = Some(DownloadTask::from_post(
+                        post,
+                        maybe_audio_url,
+                        MP4_EXTENSION.to_owned(),
+                        None,
+                    ));
+                }
             }
-            // todo: find exhaustive collection of these, or figure out if they are (x, x*2) pairs
-            let dash_video_only = vec!["DASH_1_2_M", "DASH_2_4_M", "DASH_4_8_M"];
-            let ext = url.split('.').last().unwrap().to_owned();
-            video_task = Some(DownloadTask::from_post(post, url.clone(), ext, None));
-            if !dash_video_only.contains(&dash_video) & self.ffmpeg_available {
-                let all = &url.split('/').collect::<Vec<&str>>();
-                let mut result = all.split_last().unwrap().1.to_vec();
-                result.push("DASH_audio.mp4");
-                // dynamically generate audio URLs for reddit videos by changing the video URL
-                let maybe_audio_url = result.join("/");
-                // Check the mime type to see the generated URL contains an audio file
-                // This can be done by checking the content type header for the given URL
-                // Reddit API response does not seem to expose any easy way to figure this out
-                if let Ok(exists) = check_url_has_mime_type(&maybe_audio_url, mime::MP4).await {
-                    if exists {
-                        audio_task = Some(DownloadTask::from_post(
-                            post,
-                            maybe_audio_url,
-                            MP4_EXTENSION.to_owned(),
-                            None,
-                        ));
-                    }
+        }
+
+        if let Some(a_task) = audio_task {
+            if let (Some(video_filename), Some(audio_filename)) =
+                (self.schedule_task(video_task).await, self.schedule_task(a_task).await)
+            {
+                // merge the audio and video files
+                if self.stitch_audio_video(&video_filename, &audio_filename).await.is_err() {
+                    debug!("Error merging audio and video files");
                 }
             }
         } else {
-            let msg = format!("Unsupported reddit video URL: {}", url);
-            self.fail(&msg);
+            self.schedule_task(video_task).await;
         }
-        if let Some(v_task) = video_task {
-            if let Some(a_task) = audio_task {
-                if let (Some(video_filename), Some(audio_filename)) =
-                    (self.schedule_task(v_task).await, self.schedule_task(a_task).await)
-                {
-                    // merge the audio and video files
-                    if self.stitch_audio_video(&video_filename, &audio_filename).await.is_err() {
-                        debug!("Error merging audio and video files");
-                    }
-                }
-            } else {
-                self.schedule_task(v_task).await;
-            }
-        }
+
+        Ok(())
     }
 
-    async fn download_giphy(&self, post: &Post) {
+    async fn download_giphy(&self, post: &Post) -> Result<()> {
         let url = post.data.url.as_ref().unwrap();
         let parsed = Url::parse(url).unwrap();
         let extension = url.split('.').last().unwrap();
@@ -440,9 +418,10 @@ impl<'a> Downloader<'a> {
                 }
             }
         }
+        Ok(())
     }
 
-    async fn download_imgur_gif(&self, post: &Post) {
+    async fn download_imgur_gif(&self, post: &Post) -> Result<()> {
         let url = post.data.url.as_ref().unwrap();
 
         // if the extension is gifv, then replace gifv->mp4 to get the video URL
@@ -453,40 +432,42 @@ impl<'a> Downloader<'a> {
             None,
         );
         self.schedule_task(task).await;
+        Ok(())
     }
 
-    async fn download_imgur_image(&self, post: &Post) {
+    async fn download_imgur_image(&self, post: &Post) -> Result<()> {
         let url = post.data.url.as_ref().unwrap();
         let extension = url.split('.').last().unwrap();
 
         let task = DownloadTask::from_post(post, url.to_owned(), extension.to_owned(), None);
         self.schedule_task(task).await;
+        Ok(())
     }
 
-    async fn download_imgur_unknown(&self, post: &Post) {
+    async fn download_imgur_unknown(&self, post: &Post) -> Result<()> {
         let url = post.data.url.as_ref().unwrap();
 
         // try adding the .jpg extension to the URL
         let url = format!("{}.jpg", url);
-        if let Ok(success) = check_url_has_mime_type(&url, mime::JPEG).await {
-            if success {
-                let task = DownloadTask::from_post(post, url, JPG_EXTENSION.to_owned(), None);
-                self.schedule_task(task).await;
-                return;
-            }
+        let success = check_url_has_mime_type(&url, mime::JPEG).await.unwrap_or(false);
+        if success {
+            let task = DownloadTask::from_post(post, url, JPG_EXTENSION.to_owned(), None);
+            self.schedule_task(task).await;
+            return Ok(())
         }
+
         let url = format!("{}.png", url);
-        if let Ok(success) = check_url_has_mime_type(&url, mime::PNG).await {
-            if success {
-                let task = DownloadTask::from_post(post, url, PNG_EXTENSION.to_owned(), None);
-                self.schedule_task(task).await;
-                return;
-            }
+        let success = check_url_has_mime_type(&url, mime::PNG).await.unwrap_or(false); 
+        if success {
+            let task = DownloadTask::from_post(post, url, PNG_EXTENSION.to_owned(), None);
+            self.schedule_task(task).await;
+            return Ok(());
         }
-        self.skip("Cannot determine imgur image type");
+        
+        bail!("Cannot determine imgur image type");
     }
 
-    async fn download_imgur_album(&self, post: &Post) {
+    async fn download_imgur_album(&self, post: &Post) -> Result<()> {
         let url = post.data.url.as_ref().unwrap();
         let mut tokens = url.split('/').collect::<Vec<&str>>();
         tokens.push("zip");
@@ -494,42 +475,34 @@ impl<'a> Downloader<'a> {
 
         let task = DownloadTask::from_post(post, url, ZIP_EXTENSION.to_owned(), None);
         self.schedule_task(task).await;
+        Ok(())
     }
 
-    async fn download_streamable_video(&self, post: &Post) {
+    async fn download_streamable_video(&self, post: &Post) -> Result<()> {
         let url = post.get_url().unwrap();
         let parsed = Url::parse(&url).unwrap();
         let video_id = &parsed[Position::AfterHost..Position::AfterPath];
         let streamable_url = format!("{}{}", STREAMABLE_API, video_id);
-        let response = match self.session.get(&streamable_url).send().await {
-            Ok(response) => response,
-            Err(e) => {
-                self.fail(&format!("Error contacting streamable API: {}", e));
-                return;
-            }
-        };
-        let parsed = match response.json::<StreamableApiResponse>().await {
-            Ok(j) => j,
-            Err(e) => {
-                self.fail(&format!("Error parsing streamable API response from {}: {}", streamable_url, e));
-                return;
-            }
-        };
+        let response = self.session.get(&streamable_url).send().await.context("Error contacting streamable API")?;
 
-        if parsed.files.contains_key(MP4_EXTENSION) {
-            let video_url =
-                parsed.files.get(MP4_EXTENSION).unwrap().url.borrow().to_owned().unwrap();
-            let ext = MP4_EXTENSION.to_owned();
 
-            let task = DownloadTask::from_post(post, video_url, ext, None);
-            self.schedule_task(task).await;
-        } else {
-            self.fail("No mp4 file found in streamable API response");
+        let parsed =  response.json::<StreamableApiResponse>().await.context(format!("Error parsing streamable API response from {}", streamable_url))?;        
+
+        if !parsed.files.contains_key(MP4_EXTENSION) {
+            bail!("No mp4 file found in streamable API response")
         }
+
+        let video_url = parsed.files.get(MP4_EXTENSION).unwrap().url.borrow().to_owned().unwrap();
+        let ext = MP4_EXTENSION.to_owned();
+
+        let task = DownloadTask::from_post(post, video_url, ext, None);
+        self.schedule_task(task).await;
+
+        Ok(())
     }
 
-    fn fail(&self, msg: &str) {
-        error!("{}", msg);
+    fn fail(&self, e: anyhow::Error) {
+        error!("{}", e);
         *self.failed.lock().unwrap() += 1;
     }
 
@@ -577,11 +550,11 @@ impl<'a> Downloader<'a> {
                 }
             }
             Ok(false) => {
-                self.fail(&format!("Failed to download media from url: {}", task.url));
+                self.fail(anyhow!("Failed to download media from url: {}", task.url));
                 None
             }
             Err(e) => {
-                self.fail(&format!("Error while downloading media from url {}: {}", task.url, e));
+                self.fail(anyhow!("Error while downloading media from url {}: {}", task.url, e));
                 None
             }
         }
