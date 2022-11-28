@@ -17,6 +17,7 @@ use crate::utils::{check_path_present, check_url_has_mime_type};
 
 pub static JPG_EXTENSION: &str = "jpg";
 pub static PNG_EXTENSION: &str = "png";
+pub static JPEG_EXTENSION: &str = "jpeg";
 pub const GIF_EXTENSION: &str = "gif";
 pub const GIFV_EXTENSION: &str = "gifv";
 const MP4_EXTENSION: &str = "mp4";
