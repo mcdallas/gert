@@ -247,7 +247,10 @@ impl Post {
         if url.contains(REDDIT_IMAGE_SUBDOMAIN) {
             // if the URL uses the reddit image subdomain and if the extension is
             // jpg, png or gif, then we can use the URL as is.
-            if url.ends_with(JPG_EXTENSION) || url.ends_with(PNG_EXTENSION) || url.ends_with(JPEG_EXTENSION) {
+            if url.ends_with(JPG_EXTENSION)
+                || url.ends_with(PNG_EXTENSION)
+                || url.ends_with(JPEG_EXTENSION)
+            {
                 return MediaType::RedditImage;
             } else if url.ends_with(GIF_EXTENSION) {
                 return MediaType::RedditGif;

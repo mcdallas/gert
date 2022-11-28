@@ -1,8 +1,8 @@
 use crate::errors::GertError;
 use crate::structures::{Listing, Post};
+use log::debug;
 use reqwest::Client;
 use std::fmt::Write;
-use log::debug;
 
 pub struct Subreddit {
     /// Name of subreddit.
@@ -24,7 +24,7 @@ impl Subreddit {
         ty: &str,
         limit: u32,
         period: Option<&str>,
-        after: Option<&str>
+        after: Option<&str>,
     ) -> Result<Listing, GertError> {
         let url = &mut format!("{}/{}.json?limit={}", self.url, ty, limit);
 
@@ -39,11 +39,20 @@ impl Subreddit {
         Ok(self.client.get(&url.to_owned()).send().await?.json::<Listing>().await?)
     }
 
-    pub async fn get_posts(&self, feed:&str, limit: u32, period: Option<&str>) -> Result<Vec<Post>, GertError> {
+    pub async fn get_posts(
+        &self,
+        feed: &str,
+        limit: u32,
+        period: Option<&str>,
+    ) -> Result<Vec<Post>, GertError> {
         if limit <= 100 {
-            return Ok(self.get_feed(feed, limit, period, None).await?.data
-            .children
-            .into_iter().collect())
+            return Ok(self
+                .get_feed(feed, limit, period, None)
+                .await?
+                .data
+                .children
+                .into_iter()
+                .collect());
         }
         let mut page = 1;
         let mut posts: Vec<Post> = Vec::new();
@@ -53,12 +62,12 @@ impl Subreddit {
             debug!("Fetching page {} of {} from r/{} [{}]", page, limit / 100, self.name, feed);
             let limit = if remaining > 100 { 100 } else { remaining };
             let listing = self.get_feed(feed, limit, period, after).await?;
-            
+
             posts.extend(listing.data.children.into_iter().collect::<Vec<Post>>());
             let last_post = posts.last().unwrap();
             after = Some(&last_post.data.name);
             remaining -= limit;
-            page+=1;
+            page += 1;
         }
         Ok(posts)
     }

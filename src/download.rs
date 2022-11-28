@@ -203,7 +203,7 @@ impl<'a> Downloader<'a> {
             let maybe_data = response.bytes().await;
             if let Ok(data) = maybe_data {
                 debug!("Bytes length of the data: {:#?}", data.len());
-                let maybe_output = File::create(&file_name);
+                let maybe_output = File::create(file_name);
                 match maybe_output {
                     Ok(mut output) => {
                         debug!("Created a file: {}", file_name);
@@ -663,9 +663,9 @@ impl<'a> Downloader<'a> {
         let output_file = video_path.replace(".mp4", "-merged.mp4");
         let mut command = tokio::process::Command::new("ffmpeg")
             .arg("-i")
-            .arg(&video_path)
+            .arg(video_path)
             .arg("-i")
-            .arg(&audio_path)
+            .arg(audio_path)
             .arg("-c")
             .arg("copy")
             .arg("-map")
