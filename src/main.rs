@@ -292,11 +292,9 @@ async fn main() -> Result<(), GertError> {
         posts.push(post);
     } else {
         for subreddit in &subreddits {
-            let listing = Subreddit::new(subreddit).get_feed(feed, limit, period).await?;
+            let subposts = Subreddit::new(subreddit).get_posts(feed, limit, period).await?;
             posts.extend(
-                listing
-                    .data
-                    .children
+                subposts
                     .into_iter()
                     .filter(|post| {
                         post.data.url.is_some() && !post.data.is_self && post.data.score > upvotes
