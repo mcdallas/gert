@@ -8,6 +8,7 @@ use std::{fs, io};
 use anyhow::{anyhow, bail, Context, Result};
 use log::{debug, error, info, warn};
 use reqwest::StatusCode;
+use serde_json::json;
 use url::{Position, Url};
 
 use crate::errors::GertError;
@@ -68,6 +69,8 @@ pub enum MediaType {
 #[derive(Debug)]
 pub struct Downloader<'a> {
     posts: Vec<Post>,
+    post_json: serde_json::Value,
+    export_json: bool,
     data_directory: &'a str,
     should_download: bool,
     use_human_readable: bool,
@@ -85,14 +88,17 @@ impl<'a> Downloader<'a> {
         posts: Vec<Post>,
         data_directory: &'a str,
         should_download: bool,
+        export_json: bool,
         use_human_readable: bool,
         ffmpeg_available: bool,
         session: &'a reqwest::Client,
     ) -> Downloader<'a> {
         Downloader {
             posts,
+            post_json: json!({}),
             data_directory,
             should_download,
+            export_json,
             use_human_readable,
             ffmpeg_available,
             session,
@@ -104,8 +110,10 @@ impl<'a> Downloader<'a> {
         }
     }
 
-    pub async fn run(&self) -> Result<(), GertError> {
-        for post in self.posts.iter() {
+    // Downloads the media from the given URL and then returns the JSON data
+    // about the media
+    pub async fn run(&mut self) -> Result<serde_json::Value, GertError> {
+        for post in self.posts.clone().iter() {
             self.process(post).await;
         }
 
@@ -119,7 +127,7 @@ impl<'a> Downloader<'a> {
         info!("#####################################");
         info!("FIN.");
 
-        Ok(())
+        Ok(self.post_json.clone())
     }
 
     /// Generate a file name in the right format that Gert expects
@@ -187,47 +195,52 @@ impl<'a> Downloader<'a> {
     }
 
     /// Download media from the given url and save to data directory. Also create data directory if not present already
-    async fn download_media(&self, file_name: &str, url: &str) -> Result<bool, GertError> {
+    async fn download_media(&mut self, file_name: &str, url: &str, post: &Post) -> Result<bool, GertError> {
         // create directory if it does not already exist
         // the directory is created relative to the current working directory
         let mut status = false;
         let directory = Path::new(file_name).parent().unwrap();
-        match fs::create_dir_all(directory) {
-            Ok(_) => (),
-            Err(_e) => return Err(GertError::CouldNotCreateDirectory),
-        }
+        fs::create_dir_all(directory)?;
 
-        let maybe_response = self.session.get(url).send().await;
-        if let Ok(response) = maybe_response {
-            // debug!("URL Response: {:#?}", response);
-            let maybe_data = response.bytes().await;
-            if let Ok(data) = maybe_data {
-                debug!("Bytes length of the data: {:#?}", data.len());
-                let maybe_output = File::create(file_name);
-                match maybe_output {
-                    Ok(mut output) => {
-                        debug!("Created a file: {}", file_name);
-                        match io::copy(&mut data.as_ref(), &mut output) {
-                            Ok(_) => {
-                                info!("Successfully saved media: {} from url {}", file_name, url);
-                                status = true;
-                            }
-                            Err(_e) => {
-                                error!("Could not save media from url {} to {}", url, file_name);
-                            }
+        let response = self.session.get(url).send().await?;
+        // debug!("URL Response: {:#?}", response);
+
+        let data = response.bytes().await?;
+        debug!("Bytes length of the data: {:#?}", data.len());
+
+        let maybe_output = File::create(file_name);
+        match maybe_output {
+            Ok(mut output) => {
+                debug!("Created a file: {}", file_name);
+                match io::copy(&mut data.as_ref(), &mut output) {
+                    Ok(_) => {
+                        info!("Successfully saved media: {} from url {}", file_name, url);
+                        status = true;
+
+                        if self.export_json {
+                            self.post_json[file_name] = serde_json::to_value(post)?;
+                            self.post_json[file_name]["success"] = serde_json::to_value(true)?;
                         }
                     }
-                    Err(_) => {
-                        warn!("Could not create a file with the name: {}. Skipping", file_name);
+                    Err(_e) => {
+                        error!("Could not save media from url {} to {}", url, file_name);
+
+                        if self.export_json {
+                            self.post_json[file_name] = serde_json::to_value(post)?;
+                            self.post_json[file_name]["success"] = serde_json::to_value(false)?;
+                        }
                     }
                 }
+            }
+            Err(_) => {
+                warn!("Could not create a file with the name: {}. Skipping", file_name);
             }
         }
 
         Ok(status)
     }
 
-    async fn process(&self, post: &Post) {
+    async fn process(&mut self, post: &Post) {
         debug!("type is : {:?}", post.get_type());
         let result = match post.get_type() {
             MediaType::Gallery => self.download_gallery(post).await,
@@ -247,12 +260,13 @@ impl<'a> Downloader<'a> {
                 Ok(())
             }
         };
+
         if let Err(e) = result {
             self.fail(e);
         }
     }
 
-    async fn download_gallery(&self, post: &Post) -> Result<()> {
+    async fn download_gallery(&mut self, post: &Post) -> Result<()> {
         let gallery = post.data.gallery_data.as_ref().unwrap();
         let media_metadata = post.data.media_metadata.as_ref().unwrap();
 
@@ -264,27 +278,27 @@ impl<'a> Downloader<'a> {
             }
             let url = format!("https://{}/{}.{}", REDDIT_IMAGE_SUBDOMAIN, item.media_id, ext);
             let task = DownloadTask::from_post(post, url, ext.to_owned(), Some(index));
-            self.schedule_task(task).await;
+            self.schedule_task(task, &post).await;
         }
         Ok(())
     }
 
-    async fn download_reddit_image(&self, post: &Post) -> Result<()> {
+    async fn download_reddit_image(&mut self, post: &Post) -> Result<()> {
         let url = post.get_url().unwrap();
         let extension = url.split('.').last().unwrap();
         let task = DownloadTask::from_post(post, url.to_owned(), extension.to_owned(), None);
-        self.schedule_task(task).await;
+        self.schedule_task(task, &post).await;
         Ok(())
     }
 
-    async fn download_gfycat(&self, post: &Post) -> Result<()> {
+    async fn download_gfycat(&mut self, post: &Post) -> Result<()> {
         let url = post.data.url.as_ref().unwrap();
         let extension = url.split('.').last().unwrap();
         match extension {
             MP4_EXTENSION => {
                 let task =
                     DownloadTask::from_post(post, url.to_owned(), extension.to_owned(), None);
-                self.schedule_task(task).await;
+                self.schedule_task(task, &post).await;
             }
             _ => {
                 // Convert Gfycat/Redgifs GIFs into mp4 URLs for download
@@ -322,7 +336,7 @@ impl<'a> Downloader<'a> {
                         MP4_EXTENSION.to_owned(),
                         None,
                     );
-                    self.schedule_task(task).await;
+                    self.schedule_task(task, &post).await;
                 } else {
                     bail!("Gfycat API returned status code: {}", response.status());
                 }
@@ -331,7 +345,7 @@ impl<'a> Downloader<'a> {
         Ok(())
     }
 
-    async fn download_reddit_video(&self, post: &Post) -> Result<()> {
+    async fn download_reddit_video(&mut self, post: &Post) -> Result<()> {
         let post_url = post.data.url.as_ref().unwrap();
         let extension = post_url.split('.').last().unwrap();
 
@@ -393,7 +407,7 @@ impl<'a> Downloader<'a> {
 
         if let Some(a_task) = audio_task {
             if let (Some(video_filename), Some(audio_filename)) =
-                (self.schedule_task(video_task).await, self.schedule_task(a_task).await)
+                (self.schedule_task(video_task, &post).await, self.schedule_task(a_task, &post).await)
             {
                 // merge the audio and video files
                 if self.stitch_audio_video(&video_filename, &audio_filename).await.is_err() {
@@ -401,13 +415,13 @@ impl<'a> Downloader<'a> {
                 }
             }
         } else {
-            self.schedule_task(video_task).await;
+            self.schedule_task(video_task, &post).await;
         }
 
         Ok(())
     }
 
-    async fn download_giphy(&self, post: &Post) -> Result<()> {
+    async fn download_giphy(&mut self, post: &Post) -> Result<()> {
         let url = post.data.url.as_ref().unwrap();
         let parsed = Url::parse(url).unwrap();
         let extension = url.split('.').last().unwrap();
@@ -424,7 +438,7 @@ impl<'a> Downloader<'a> {
                 GIF_EXTENSION | MP4_EXTENSION | GIFV_EXTENSION => {
                     let task =
                         DownloadTask::from_post(post, url.to_owned(), extension.to_owned(), None);
-                    self.schedule_task(task).await;
+                    self.schedule_task(task, &post).await;
                 }
                 _ => {
                     // if the link points to the giphy post rather than the media link,
@@ -435,14 +449,14 @@ impl<'a> Downloader<'a> {
                         format!("https://{}/media/{}.gif", GIPHY_MEDIA_SUBDOMAIN, media_id);
                     let task =
                         DownloadTask::from_post(post, giphy_url, GIF_EXTENSION.to_owned(), None);
-                    self.schedule_task(task).await;
+                    self.schedule_task(task, &post).await;
                 }
             }
         }
         Ok(())
     }
 
-    async fn download_imgur_gif(&self, post: &Post) -> Result<()> {
+    async fn download_imgur_gif(&mut self, post: &Post) -> Result<()> {
         let url = post.data.url.as_ref().unwrap();
 
         // if the extension is gifv, then replace gifv->mp4 to get the video URL
@@ -452,20 +466,20 @@ impl<'a> Downloader<'a> {
             MP4_EXTENSION.to_owned(),
             None,
         );
-        self.schedule_task(task).await;
+        self.schedule_task(task, &post).await;
         Ok(())
     }
 
-    async fn download_imgur_image(&self, post: &Post) -> Result<()> {
+    async fn download_imgur_image(&mut self, post: &Post) -> Result<()> {
         let url = post.data.url.as_ref().unwrap();
         let extension = url.split('.').last().unwrap();
 
         let task = DownloadTask::from_post(post, url.to_owned(), extension.to_owned(), None);
-        self.schedule_task(task).await;
+        self.schedule_task(task, &post).await;
         Ok(())
     }
 
-    async fn download_imgur_unknown(&self, post: &Post) -> Result<()> {
+    async fn download_imgur_unknown(&mut self, post: &Post) -> Result<()> {
         let url = post.data.url.as_ref().unwrap();
 
         // try adding the .jpg extension to the URL
@@ -473,7 +487,7 @@ impl<'a> Downloader<'a> {
         let success = check_url_has_mime_type(&url, mime::JPEG).await.unwrap_or(false);
         if success {
             let task = DownloadTask::from_post(post, url, JPG_EXTENSION.to_owned(), None);
-            self.schedule_task(task).await;
+            self.schedule_task(task, &post).await;
             return Ok(());
         }
 
@@ -481,25 +495,25 @@ impl<'a> Downloader<'a> {
         let success = check_url_has_mime_type(&url, mime::PNG).await.unwrap_or(false);
         if success {
             let task = DownloadTask::from_post(post, url, PNG_EXTENSION.to_owned(), None);
-            self.schedule_task(task).await;
+            self.schedule_task(task, &post).await;
             return Ok(());
         }
 
         bail!("Cannot determine imgur image type");
     }
 
-    async fn download_imgur_album(&self, post: &Post) -> Result<()> {
+    async fn download_imgur_album(&mut self, post: &Post) -> Result<()> {
         let url = post.data.url.as_ref().unwrap();
         let mut tokens = url.split('/').collect::<Vec<&str>>();
         tokens.push("zip");
         let url = tokens.join("/");
 
         let task = DownloadTask::from_post(post, url, ZIP_EXTENSION.to_owned(), None);
-        self.schedule_task(task).await;
+        self.schedule_task(task, &post).await;
         Ok(())
     }
 
-    async fn download_streamable_video(&self, post: &Post) -> Result<()> {
+    async fn download_streamable_video(&mut self, post: &Post) -> Result<()> {
         let url = post.get_url().unwrap();
         let parsed = Url::parse(&url).unwrap();
         let video_id = &parsed[Position::AfterHost..Position::AfterPath];
@@ -524,7 +538,7 @@ impl<'a> Downloader<'a> {
         let ext = MP4_EXTENSION.to_owned();
 
         let task = DownloadTask::from_post(post, video_url, ext, None);
-        self.schedule_task(task).await;
+        self.schedule_task(task, &post).await;
 
         Ok(())
     }
@@ -539,7 +553,7 @@ impl<'a> Downloader<'a> {
         *self.skipped.lock().unwrap() += 1;
     }
 
-    async fn schedule_task(&self, task: DownloadTask) -> Option<String> {
+    async fn schedule_task(&mut self, task: DownloadTask, post: &Post) -> Option<String> {
         debug!("Received task: {:?}", task);
         {
             *self.supported.lock().unwrap() += 1;
@@ -561,7 +575,7 @@ impl<'a> Downloader<'a> {
             return None;
         }
 
-        let result = self.download_media(&file_name, &task.url).await;
+        let result = self.download_media(&file_name, &task.url, &post).await;
         match result {
             Ok(true) => {
                 {

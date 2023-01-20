@@ -84,7 +84,7 @@ pub struct ListingData {
     pub dist: i32,
 }
 
-#[derive(Deserialize, Debug, Clone)]
+#[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct Post {
     /// The kind of object this is. eg: Comment, Account, Subreddit, etc.
     pub kind: String,
@@ -93,7 +93,7 @@ pub struct Post {
 }
 
 /// Represents all types of link posts and self posts on Reddit.
-#[derive(Deserialize, Debug, Clone)]
+#[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct PostData {
     pub subreddit: String,
     /// The ID of the post in base-36 form, as used in Reddit's links.
@@ -141,7 +141,7 @@ pub struct PostData {
     pub is_self: bool,
 }
 
-#[derive(Deserialize, Debug, Clone)]
+#[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct MediaMetadata {
     pub status: String,
     pub e: String,
@@ -149,24 +149,24 @@ pub struct MediaMetadata {
     pub id: String,
 }
 
-#[derive(Deserialize, Debug, Clone)]
+#[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct PostMedia {
     pub reddit_video: Option<RedditVideo>,
 }
 
-#[derive(Deserialize, Debug, Clone)]
+#[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct RedditVideo {
     pub fallback_url: String,
     pub is_gif: bool,
 }
 
-#[derive(Deserialize, Debug, Clone)]
+#[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct GalleryItems {
     /// Representation containing a list of gallery items
     pub items: Vec<GalleryItem>,
 }
 
-#[derive(Deserialize, Debug, Serialize, Clone)]
+#[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct GalleryItem {
     /// The reddit media id, can be used to construct a redd.it URL
     pub media_id: String,

@@ -37,4 +37,6 @@ pub enum GertError {
     FfmpegError(String),
     #[error("Error unzipping file")]
     ZipError(#[from] zip::result::ZipError),
+    #[error("Error serializing to JSON")]
+    JsonSerializeError(#[from] serde_json::Error),
 }
