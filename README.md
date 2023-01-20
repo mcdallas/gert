@@ -69,6 +69,7 @@ USAGE:
 FLAGS:
         --debug             Show the current config being used
     -r, --dry-run           Dry run and print the URLs of saved media to download
+    -j, --export-json       Export the post data to a JSON file
     -h, --help              Prints help information
     -H, --human-readable    Use human readable names for files
     -V, --version           Prints version information

@@ -5,6 +5,8 @@ use env_logger::Env;
 use log::{debug, info, warn};
 
 use auth::Client;
+use tokio::fs;
+use serde_json::json;
 
 use crate::download::Downloader;
 use crate::errors::GertError;
@@ -136,12 +138,21 @@ async fn main() -> Result<(), GertError> {
                 .takes_value(true)
                 .default_value("0"),
         )
+        .arg(
+            Arg::with_name("export_json")
+                .short("j")
+                .long("export-json")
+                .takes_value(false)
+                .help("Export the post data to a JSON file"),
+        )
         .get_matches();
 
     let env_file = matches.value_of("environment");
     let data_directory = String::from(matches.value_of("output_directory").unwrap());
     // generate the URLs to download from without actually downloading the media
     let should_download = !matches.is_present("dry_run");
+    // export the post data to a JSON file
+    let export_json = matches.is_present("export_json");
     // check if ffmpeg is present for combining video streams
     let ffmpeg_available = application_present(String::from("ffmpeg"));
     // generate human readable file names instead of MD5 Hashed file names
@@ -305,16 +316,46 @@ async fn main() -> Result<(), GertError> {
             );
         }
     }
-    let downloader = Downloader::new(
+
+    info!("Found {} posts", posts.len());
+
+    let mut downloader = Downloader::new(
         posts,
         &data_directory,
         should_download,
+        export_json,
         use_human_readable,
         ffmpeg_available,
         &session,
     );
 
-    downloader.run().await?;
+    let mut post_data = downloader.run().await?;
+
+    if export_json {
+        let json_file_name = format!("{}/posts.json", &data_directory);
+
+        let old_post_data_result = fs::read(&json_file_name).await;
+        let old_post_data = match old_post_data_result {
+            Ok(bytes) => serde_json::from_slice(&bytes)?,
+            Err(_) => json!({})
+        };
+
+        fn merge(a: &mut serde_json::Value, b: serde_json::Value) {
+            match (a, b) {
+                (a @ &mut serde_json::Value::Object(_), serde_json::Value::Object(b)) => {
+                    let a = a.as_object_mut().unwrap();
+                    for (k, v) in b {
+                        merge(a.entry(k).or_insert(serde_json::Value::Null), v);
+                    }
+                }
+                (a, b) => *a = b,
+            }
+        }
+        
+        merge(&mut post_data, old_post_data);
+        let json = serde_json::to_string(&post_data)?;
+        fs::write(&format!("{}/posts.json", &data_directory), json).await?;
+    }
 
     Ok(())
 }
