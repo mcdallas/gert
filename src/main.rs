@@ -141,7 +141,7 @@ async fn main() -> Result<(), GertError> {
                 .short("c")
                 .long("conserve-gifs")
                 .value_name("conserve_gifs")
-                .help("Don't convert gifs to MP4")
+                .help("Disable gif to mp4 conversion")
                 .takes_value(false),
         )
         .get_matches();
