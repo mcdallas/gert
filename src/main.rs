@@ -136,6 +136,14 @@ async fn main() -> Result<(), GertError> {
                 .takes_value(true)
                 .default_value("0"),
         )
+        .arg(
+            Arg::with_name("conserve_gifs")
+                .short("c")
+                .long("conserve-gifs")
+                .value_name("conserve_gifs")
+                .help("Don't convert gifs to MP4")
+                .takes_value(false),
+        )
         .get_matches();
 
     let env_file = matches.value_of("environment");
@@ -182,6 +190,7 @@ async fn main() -> Result<(), GertError> {
         },
         None => regex::Regex::new(".*").unwrap(),
     };
+    let conserve_gifs: bool = matches.is_present("conserve_gifs");
 
     // initialize logger for the app and set logging level to info if no environment variable present
     let env = Env::default().filter("RS_LOG").default_filter_or("info");
@@ -312,6 +321,7 @@ async fn main() -> Result<(), GertError> {
         use_human_readable,
         ffmpeg_available,
         &session,
+        conserve_gifs,
     );
 
     downloader.run().await?;

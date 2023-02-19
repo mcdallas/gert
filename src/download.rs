@@ -73,6 +73,7 @@ pub struct Downloader<'a> {
     use_human_readable: bool,
     ffmpeg_available: bool,
     session: &'a reqwest::Client,
+    conserve_gifs: bool,
     supported: Arc<Mutex<u16>>,
     skipped: Arc<Mutex<u16>>,
     downloaded: Arc<Mutex<u16>>,
@@ -88,6 +89,7 @@ impl<'a> Downloader<'a> {
         use_human_readable: bool,
         ffmpeg_available: bool,
         session: &'a reqwest::Client,
+        conserve_gifs: bool,
     ) -> Downloader<'a> {
         Downloader {
             posts,
@@ -96,6 +98,7 @@ impl<'a> Downloader<'a> {
             use_human_readable,
             ffmpeg_available,
             session,
+            conserve_gifs,
             supported: Arc::new(Mutex::new(0)),
             skipped: Arc::new(Mutex::new(0)),
             downloaded: Arc::new(Mutex::new(0)),
@@ -596,7 +599,7 @@ impl<'a> Downloader<'a> {
             return Ok(download_path);
         };
 
-        if task.extension == GIF_EXTENSION {
+        if task.extension == GIF_EXTENSION && !self.conserve_gifs {
             //If ffmpeg is installed convert gifs to mp4
             let output_file = download_path.replace(".gif", ".mp4");
             if check_path_present(&output_file) {
