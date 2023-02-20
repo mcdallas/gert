@@ -67,6 +67,7 @@ USAGE:
     gert [FLAGS] [OPTIONS] --subreddit <SUBREDDIT>...
 
 FLAGS:
+    -c  --conserve-gifs     Disable gif to mp4 conversion
         --debug             Show the current config being used
     -r, --dry-run           Dry run and print the URLs of saved media to download
     -h, --help              Prints help information
@@ -116,3 +117,4 @@ _NOTE_: If you have 2FA enabled, please make sure you set `PASSWORD=<password>:<
 ### Credits
 
 based on https://github.com/manojkarthick/reddsaver
+
