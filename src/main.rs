@@ -301,7 +301,7 @@ async fn main() -> Result<(), GertError> {
         posts.push(post);
     } else {
         for subreddit in &subreddits {
-            let subposts = Subreddit::new(subreddit).get_posts(feed, limit, period).await?;
+            let subposts = Subreddit::new(subreddit, &session).get_posts(feed, limit, period).await?;
             posts.extend(
                 subposts
                     .into_iter()

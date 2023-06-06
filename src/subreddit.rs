@@ -4,19 +4,19 @@ use log::debug;
 use reqwest::Client;
 use std::fmt::Write;
 
-pub struct Subreddit {
+pub struct Subreddit<'a> {
     /// Name of subreddit.
     pub name: String,
     url: String,
-    client: Client,
+    client: &'a Client,
 }
 
-impl Subreddit {
+impl Subreddit<'_> {
     /// Create a new `Subreddit` instance.
-    pub fn new(name: &str) -> Subreddit {
+    pub fn new<'a>(name: &'a str, session: &'a Client) -> Subreddit<'a> {
         let subreddit_url = format!("https://www.reddit.com/r/{}", name);
 
-        Subreddit { name: name.to_owned(), url: subreddit_url, client: Client::new() }
+        Subreddit { name: name.to_owned(), url: subreddit_url, client:session }
     }
 
     async fn get_feed(
@@ -35,8 +35,10 @@ impl Subreddit {
         if let Some(a) = after {
             let _ = write!(url, "&after={}", a);
         }
-
-        Ok(self.client.get(&url.to_owned()).send().await?.json::<Listing>().await?)
+        let url = &url.to_owned();
+        debug!("Fetching posts from {}]", url);
+        Ok(self.client.get(url).send().await.expect("Bad response").json::<Listing>().await.expect("Failed to parse JSON"))
+        // Ok(self.client.get(url).send().await.expect("Bad response").json::<Listing>().await.expect("Failed to parse JSON"))
     }
 
     pub async fn get_posts(
