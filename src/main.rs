@@ -193,7 +193,7 @@ async fn main() -> Result<(), GertError> {
     let conserve_gifs: bool = matches.is_present("conserve_gifs");
 
     // initialize logger for the app and set logging level to info if no environment variable present
-    let env = Env::default().filter("RS_LOG").default_filter_or("info");
+    let env = Env::default().filter("RUST_LOG").default_filter_or("info");
     env_logger::Builder::from_env(env).init();
 
     // if the option is --debug, show the configuration and return immediately
@@ -224,6 +224,7 @@ async fn main() -> Result<(), GertError> {
         info!("PERIOD = {}", period.unwrap());
         info!("FEED = {}", feed);
         info!("MATCH = {}", pattern.as_str());
+        info!("CONSERVE GIFS = {}", conserve_gifs);
 
         return Ok(());
     }
