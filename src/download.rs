@@ -388,7 +388,7 @@ impl<'a> Downloader<'a> {
                         post,
                         maybe_audio_url,
                         MP4_EXTENSION.to_owned(),
-                        None,
+                        Some(1),
                     ));
                 }
             }
@@ -689,9 +689,12 @@ impl<'a> Downloader<'a> {
             fs::rename(output_file, video_path)?;
             debug!("Successfully merged audio and video: {}", video_path);
             return Ok(video_path.to_owned());
+        } else {
+            fs::remove_file(audio_path)?;
+            return Err(GertError::FfmpegError("Failed to merge audio and video".into()))
         }
 
-        Err(GertError::FfmpegError("Failed to merge audio and video".into()))
+        
     }
 
     fn get_filename(&self, task: &DownloadTask) -> String {
