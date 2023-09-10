@@ -17,7 +17,7 @@ tokio = { version = "1.21.2", features = ["full"] }
 base64 = "0.13.0"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = { version = "1.0", features = ["raw_value"] }
-dotenv = "0.15.0"
+dotenvs = "0.1.0"
 md5 = "0.7.0"
 log = "0.4.11"
 env_logger = "0.8.2"
