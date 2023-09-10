@@ -1,6 +1,6 @@
 [package]
 name = "gert"
-version = "0.2.3"
+version = "0.2.4"
 authors = ["Mike Dallas <mcdallas@protonmail.com>"]
 description = "CLI tool to download media from Reddit"
 edition = "2021"
