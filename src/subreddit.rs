@@ -16,7 +16,7 @@ impl Subreddit<'_> {
     pub fn new<'a>(name: &'a str, session: &'a Client) -> Subreddit<'a> {
         let subreddit_url = format!("https://www.reddit.com/r/{}", name);
 
-        Subreddit { name: name.to_owned(), url: subreddit_url, client:session }
+        Subreddit { name: name.to_owned(), url: subreddit_url, client: session }
     }
 
     async fn get_feed(
@@ -37,7 +37,15 @@ impl Subreddit<'_> {
         }
         let url = &url.to_owned();
         debug!("Fetching posts from {}]", url);
-        Ok(self.client.get(url).send().await.expect("Bad response").json::<Listing>().await.expect("Failed to parse JSON"))
+        Ok(self
+            .client
+            .get(url)
+            .send()
+            .await
+            .expect("Bad response")
+            .json::<Listing>()
+            .await
+            .expect("Failed to parse JSON"))
         // Ok(self.client.get(url).send().await.expect("Bad response").json::<Listing>().await.expect("Failed to parse JSON"))
     }
 

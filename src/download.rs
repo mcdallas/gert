@@ -691,10 +691,8 @@ impl<'a> Downloader<'a> {
             return Ok(video_path.to_owned());
         } else {
             fs::remove_file(audio_path)?;
-            return Err(GertError::FfmpegError("Failed to merge audio and video".into()))
+            return Err(GertError::FfmpegError("Failed to merge audio and video".into()));
         }
-
-        
     }
 
     fn get_filename(&self, task: &DownloadTask) -> String {

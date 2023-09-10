@@ -74,7 +74,6 @@ pub fn parse_env_file(path: &str) -> Result<UserEnv, GertError> {
         env.load_override();
     }
 
-    
     let client_id = env::var("CLIENT_ID")?;
     let client_secret = env::var("CLIENT_SECRET")?;
     let username = env::var("USERNAME")?;
