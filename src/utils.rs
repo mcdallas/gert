@@ -6,6 +6,7 @@ use std::env;
 use std::path::Path;
 use std::str::FromStr;
 use which::which;
+use xml::reader::{EventReader, XmlEvent};
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
@@ -80,4 +81,67 @@ pub fn parse_env_file(path: &str) -> Result<UserEnv, GertError> {
     let password = env::var("PASSWORD")?;
 
     Ok(UserEnv { username, password, client_id, client_secret })
+}
+
+pub async fn parse_mpd(url: &str) -> (Option<String>, Option<String>) {
+    
+    // Parse the MPD file to get the highest quality video and audio URLs
+    let response = reqwest::get(url).await.expect("Failed to fetch the URL");
+
+    let mpd_content = response.text().await.expect("Failed to read the response");
+
+    let parser = EventReader::from_str(&mpd_content);
+    let mut max_video_bandwidth = 0;
+    let mut max_audio_bandwidth = 0;
+    let mut current_bandwidth = 0;
+    let mut is_video = false;
+    let mut max_video_url: Option<String> = None;
+    let mut max_audio_url: Option<String> = None;
+
+    for e in parser {
+        match e {
+            Ok(XmlEvent::StartElement { name, attributes, .. }) => {
+    
+                if name.local_name == "AdaptationSet" {
+                    let content_type = attributes.iter().find(|attr| attr.name.local_name == "contentType");
+                    match content_type {
+                        Some(attr) if attr.value == "video" => {
+                            is_video = true;
+                        },
+                        Some(attr) if attr.value == "audio" => {
+                            is_video = false;
+                        },
+                        _ => {}
+                    }
+                } else if name.local_name == "Representation" {
+                    current_bandwidth = attributes.iter()
+                        .find(|attr| attr.name.local_name == "bandwidth")
+                        .and_then(|attr| attr.value.parse().ok())
+                        .unwrap_or(0);
+    
+                    if is_video && current_bandwidth > max_video_bandwidth {
+                        max_video_bandwidth = current_bandwidth;
+                    } else if !is_video && current_bandwidth > max_audio_bandwidth {
+                        max_audio_bandwidth = current_bandwidth;
+                    }
+                }
+            },
+            Ok(XmlEvent::Characters(content)) => {
+    
+                if is_video && current_bandwidth == max_video_bandwidth {
+                    max_video_url = Some(content);
+                } else if !is_video && current_bandwidth == max_audio_bandwidth {
+                    max_audio_url = Some(content);
+                }
+            },
+            Err(e) => {
+                println!("Error: {}", e);
+                break;
+            },
+            _ => {}
+        }
+    }
+    // println!("Highest quality video URL: {:?}", max_video_url);
+    // println!("Highest quality audio URL: {:?}", max_audio_url);
+    return (max_video_url, max_audio_url);
 }

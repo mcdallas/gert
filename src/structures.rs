@@ -158,6 +158,7 @@ pub struct PostMedia {
 pub struct RedditVideo {
     pub fallback_url: String,
     pub is_gif: bool,
+    pub dash_url: String,
 }
 
 #[derive(Deserialize, Debug, Clone)]

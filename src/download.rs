@@ -13,7 +13,7 @@ use url::{Position, Url};
 use crate::errors::GertError;
 use crate::structures::Post;
 use crate::structures::{GfyData, StreamableApiResponse};
-use crate::utils::{check_path_present, check_url_has_mime_type};
+use crate::utils::{check_path_present, check_url_has_mime_type, parse_mpd};
 
 pub static JPG_EXTENSION: &str = "jpg";
 pub static PNG_EXTENSION: &str = "png";
@@ -343,6 +343,7 @@ impl<'a> Downloader<'a> {
     async fn download_reddit_video(&self, post: &Post) -> Result<()> {
         let post_url = post.data.url.as_ref().unwrap();
         let extension = post_url.split('.').last().unwrap();
+        let dash_url = &post.data.media.as_ref().unwrap().reddit_video.as_ref().unwrap().dash_url;
 
         let url = match extension {
             MP4_EXTENSION => {
@@ -367,50 +368,38 @@ impl<'a> Downloader<'a> {
             }
         };
 
-        let mut audio_task: Option<DownloadTask> = None;
+        let dash_video = url.split('/').last().context(format!("Unsupported reddit video URL: {}", url))?;
 
-        let dash_video =
-            url.split('/').last().context(format!("Unsupported reddit video URL: {}", url))?;
+        let (maybe_video, maybe_audio) = parse_mpd(&dash_url).await;
+
+        let mut video_url = url.clone();
+        let base_path = &url.split('/').collect::<Vec<&str>>()[..url.split('/').count() - 1].join("/");
 
         if !dash_video.contains("DASH") {
-            bail!("Cannot extract video url from reddit video");
-        }
-        // todo: find exhaustive collection of these, or figure out if they are (x, x*2) pairs
-        let dash_video_only = vec!["DASH_1_2_M", "DASH_2_4_M", "DASH_4_8_M"];
-        let ext = url.split('.').last().unwrap().to_owned();
-        let video_task = DownloadTask::from_post(post, url.clone(), ext, None);
-        if !dash_video_only.contains(&dash_video) & self.ffmpeg_available {
-            let all = &url.split('/').collect::<Vec<&str>>();
-            let mut result = all.split_last().unwrap().1.to_vec();
-            result.push("DASH_audio.mp4");
-            // dynamically generate audio URLs for reddit videos by changing the video URL
-            let maybe_audio_url = result.join("/");
-            // Check the mime type to see the generated URL contains an audio file
-            // This can be done by checking the content type header for the given URL
-            // Reddit API response does not seem to expose any easy way to figure this out
-            if let Ok(exists) = check_url_has_mime_type(&maybe_audio_url, mime::MP4).await {
-                if exists {
-                    audio_task = Some(DownloadTask::from_post(
-                        post,
-                        maybe_audio_url,
-                        MP4_EXTENSION.to_owned(),
-                        Some(1),
-                    ));
-                }
+            // get the video URL from the MPD file
+            if maybe_video.is_none(){
+                bail!("Could not find video in MPD");
+            } else {
+                video_url = format!("{}/{}", base_path, maybe_video.unwrap());
             }
         }
 
-        if let Some(a_task) = audio_task {
+        let video_task = DownloadTask::from_post(post, video_url, MP4_EXTENSION.to_owned(), None);
+        let video_filename = self.schedule_task(video_task).await;
+
+        if maybe_audio.is_some() {
+            let audio_url = format!("{}/{}", base_path, maybe_audio.unwrap());
+            let audio_task = DownloadTask::from_post(post, audio_url, MP4_EXTENSION.to_owned(), Some(1));
+            let audio_filename = self.schedule_task(audio_task).await;
+
             if let (Some(video_filename), Some(audio_filename)) =
-                (self.schedule_task(video_task).await, self.schedule_task(a_task).await)
+                (video_filename, audio_filename)
             {
                 // merge the audio and video files
                 if self.stitch_audio_video(&video_filename, &audio_filename).await.is_err() {
                     debug!("Error merging audio and video files");
                 }
             }
-        } else {
-            self.schedule_task(video_task).await;
         }
 
         Ok(())
