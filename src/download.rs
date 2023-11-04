@@ -14,13 +14,13 @@ use crate::structures::Post;
 use crate::structures::{StreamableApiResponse, TokenResponse, RedGif};
 use crate::utils::{check_path_present, check_url_has_mime_type, parse_mpd};
 
-pub static JPG_EXTENSION: &str = "jpg";
-pub static PNG_EXTENSION: &str = "png";
-pub static JPEG_EXTENSION: &str = "jpeg";
-pub const GIF_EXTENSION: &str = "gif";
-pub const GIFV_EXTENSION: &str = "gifv";
-const MP4_EXTENSION: &str = "mp4";
-const ZIP_EXTENSION: &str = "zip";
+pub static JPG: &str = "jpg";
+pub static PNG: &str = "png";
+pub static JPEG: &str = "jpeg";
+pub const GIF: &str = "gif";
+pub const GIFV: &str = "gifv";
+const MP4: &str = "mp4";
+const ZIP: &str = "zip";
 
 // static REDDIT_DOMAIN: &str = "reddit.com";
 pub static REDDIT_IMAGE_SUBDOMAIN: &str = "i.redd.it";
@@ -293,7 +293,7 @@ impl<'a> Downloader<'a> {
 
         // collect all the URLs for the images in the album
         for (index, item) in gallery.items.iter().enumerate() {
-            let mut ext = JPG_EXTENSION;
+            let mut ext = JPG;
             if let Some(media) = media_metadata.get(&item.media_id) {
                 ext = media.m.split('/').last().unwrap();
             }
@@ -328,7 +328,7 @@ impl<'a> Downloader<'a> {
             .await
             .context(format!("Error parsing Redgif API response from {}", api_url))?;
 
-        let task = DownloadTask::from_post(post, response.gif.urls.hd, MP4_EXTENSION.to_owned(), None);
+        let task = DownloadTask::from_post(post, response.gif.urls.hd, MP4.to_owned(), None);
         self.schedule_task(task).await;
         Ok(())
     }
@@ -339,7 +339,7 @@ impl<'a> Downloader<'a> {
         let dash_url = &post.data.media.as_ref().unwrap().reddit_video.as_ref().unwrap().dash_url;
 
         let url = match extension {
-            MP4_EXTENSION => {
+            MP4 => {
                 // if the URL uses the reddit video subdomain and if the extension is
                 // mp4, then we can use the URL as is.
                 post_url.to_owned()
@@ -377,12 +377,12 @@ impl<'a> Downloader<'a> {
             }
         }
 
-        let video_task = DownloadTask::from_post(post, video_url, MP4_EXTENSION.to_owned(), None);
+        let video_task = DownloadTask::from_post(post, video_url, MP4.to_owned(), None);
         let video_filename = self.schedule_task(video_task).await;
 
         if maybe_audio.is_some() {
             let audio_url = format!("{}/{}", base_path, maybe_audio.unwrap());
-            let audio_task = DownloadTask::from_post(post, audio_url, MP4_EXTENSION.to_owned(), Some(1));
+            let audio_task = DownloadTask::from_post(post, audio_url, MP4.to_owned(), Some(1));
             let audio_filename = self.schedule_task(audio_task).await;
 
             if let (Some(video_filename), Some(audio_filename)) =
@@ -412,7 +412,7 @@ impl<'a> Downloader<'a> {
         {
             // if we encounter gif, mp4 or gifv - download as is
             match extension {
-                GIF_EXTENSION | MP4_EXTENSION | GIFV_EXTENSION => {
+                GIF | MP4 | GIFV => {
                     let task =
                         DownloadTask::from_post(post, url.to_owned(), extension.to_owned(), None);
                     self.schedule_task(task).await;
@@ -425,7 +425,7 @@ impl<'a> Downloader<'a> {
                     let giphy_url =
                         format!("https://{}/media/{}.gif", GIPHY_MEDIA_SUBDOMAIN, media_id);
                     let task =
-                        DownloadTask::from_post(post, giphy_url, GIF_EXTENSION.to_owned(), None);
+                        DownloadTask::from_post(post, giphy_url, GIF.to_owned(), None);
                     self.schedule_task(task).await;
                 }
             }
@@ -440,7 +440,7 @@ impl<'a> Downloader<'a> {
         let task = DownloadTask::from_post(
             post,
             url.replace(".gifv", ".mp4"),
-            MP4_EXTENSION.to_owned(),
+            MP4.to_owned(),
             None,
         );
         self.schedule_task(task).await;
@@ -463,7 +463,7 @@ impl<'a> Downloader<'a> {
         let url = format!("{}.jpg", url);
         let success = check_url_has_mime_type(&url, mime::JPEG).await.unwrap_or(false);
         if success {
-            let task = DownloadTask::from_post(post, url, JPG_EXTENSION.to_owned(), None);
+            let task = DownloadTask::from_post(post, url, JPG.to_owned(), None);
             self.schedule_task(task).await;
             return Ok(());
         }
@@ -471,7 +471,7 @@ impl<'a> Downloader<'a> {
         let url = format!("{}.png", url);
         let success = check_url_has_mime_type(&url, mime::PNG).await.unwrap_or(false);
         if success {
-            let task = DownloadTask::from_post(post, url, PNG_EXTENSION.to_owned(), None);
+            let task = DownloadTask::from_post(post, url, PNG.to_owned(), None);
             self.schedule_task(task).await;
             return Ok(());
         }
@@ -485,7 +485,7 @@ impl<'a> Downloader<'a> {
         tokens.push("zip");
         let url = tokens.join("/");
 
-        let task = DownloadTask::from_post(post, url, ZIP_EXTENSION.to_owned(), None);
+        let task = DownloadTask::from_post(post, url, ZIP.to_owned(), None);
         self.schedule_task(task).await;
         Ok(())
     }
@@ -507,12 +507,12 @@ impl<'a> Downloader<'a> {
             .await
             .context(format!("Error parsing streamable API response from {}", streamable_url))?;
 
-        if !parsed.files.contains_key(MP4_EXTENSION) {
+        if !parsed.files.contains_key(MP4) {
             bail!("No mp4 file found in streamable API response")
         }
 
-        let video_url = parsed.files.get(MP4_EXTENSION).unwrap().url.borrow().to_owned().unwrap();
-        let ext = MP4_EXTENSION.to_owned();
+        let video_url = parsed.files.get(MP4).unwrap().url.borrow().to_owned().unwrap();
+        let ext = MP4.to_owned();
 
         let task = DownloadTask::from_post(post, video_url, ext, None);
         self.schedule_task(task).await;
@@ -587,7 +587,7 @@ impl<'a> Downloader<'a> {
             return Ok(download_path);
         };
 
-        if task.extension == GIF_EXTENSION && !self.conserve_gifs {
+        if task.extension == GIF && !self.conserve_gifs {
             //If ffmpeg is installed convert gifs to mp4
             let output_file = download_path.replace(".gif", ".mp4");
             if check_path_present(&output_file) {
@@ -617,7 +617,7 @@ impl<'a> Downloader<'a> {
                 return Err(GertError::FfmpegError("Failed to convert gif to mp4".into()));
             }
         }
-        if task.extension == ZIP_EXTENSION {
+        if task.extension == ZIP {
             let file = File::open(&download_path)?;
             let mut archive = zip::ZipArchive::new(file)?;
 

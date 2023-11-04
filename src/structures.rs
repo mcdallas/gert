@@ -242,12 +242,12 @@ impl Post {
         if url.contains(REDDIT_IMAGE_SUBDOMAIN) {
             // if the URL uses the reddit image subdomain and if the extension is
             // jpg, png or gif, then we can use the URL as is.
-            if url.ends_with(JPG_EXTENSION)
-                || url.ends_with(PNG_EXTENSION)
-                || url.ends_with(JPEG_EXTENSION)
+            if url.ends_with(JPG)
+                || url.ends_with(PNG)
+                || url.ends_with(JPEG)
             {
                 return MediaType::RedditImage;
-            } else if url.ends_with(GIF_EXTENSION) {
+            } else if url.ends_with(GIF) {
                 return MediaType::RedditGif;
             } else {
                 warn!("Unsupported reddit URL: {}", url);
@@ -268,9 +268,9 @@ impl Post {
                 return MediaType::ImgurAlbum;
             }
             if url.contains(IMGUR_SUBDOMAIN) {
-                if url.ends_with(GIFV_EXTENSION) || url.ends_with(GIF_EXTENSION) {
+                if url.ends_with(GIFV) || url.ends_with(GIF) {
                     return MediaType::ImgurGif;
-                } else if url.ends_with(PNG_EXTENSION) || url.ends_with(JPG_EXTENSION) {
+                } else if url.ends_with(PNG) || url.ends_with(JPG) {
                     return MediaType::ImgurImage;
                 } else {
                     warn!("Unsupported imgur URL: {}", url);
