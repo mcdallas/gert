@@ -316,7 +316,7 @@ async fn main() -> Result<(), GertError> {
             );
         }
     }
-    let downloader = Downloader::new(
+    let mut downloader = Downloader::new(
         posts,
         &data_directory,
         should_download,

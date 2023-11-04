@@ -7,12 +7,11 @@ use std::{fs, io};
 
 use anyhow::{anyhow, bail, Context, Result};
 use log::{debug, error, info, warn};
-use reqwest::StatusCode;
 use url::{Position, Url};
 
 use crate::errors::GertError;
 use crate::structures::Post;
-use crate::structures::{GfyData, StreamableApiResponse};
+use crate::structures::{StreamableApiResponse, TokenResponse, RedGif};
 use crate::utils::{check_path_present, check_url_has_mime_type, parse_mpd};
 
 pub static JPG_EXTENSION: &str = "jpg";
@@ -31,11 +30,8 @@ pub static REDDIT_VIDEO_SUBDOMAIN: &str = "v.redd.it";
 pub static IMGUR_DOMAIN: &str = "imgur.com";
 pub static IMGUR_SUBDOMAIN: &str = "i.imgur.com";
 
-pub static GFYCAT_DOMAIN: &str = "gfycat.com";
-static GFYCAT_API_PREFIX: &str = "https://api.gfycat.com/v1/gfycats";
-
 pub static REDGIFS_DOMAIN: &str = "redgifs.com";
-static REDGIFS_API_PREFIX: &str = "https://api.redgifs.com/v1/gfycats";
+static REDGIFS_API_PREFIX: &str = "https://api.redgifs.com/v2/gifs";
 
 pub static GIPHY_DOMAIN: &str = "giphy.com";
 static GIPHY_MEDIA_SUBDOMAIN: &str = "media.giphy.com";
@@ -55,7 +51,7 @@ pub enum MediaType {
     RedditImage,
     RedditGif,
     RedditVideo,
-    GfycatGif,
+    RedGif,
     GiphyGif,
     ImgurImage,
     ImgurGif,
@@ -79,6 +75,7 @@ pub struct Downloader<'a> {
     downloaded: Arc<Mutex<u16>>,
     failed: Arc<Mutex<u16>>,
     unsupported: Arc<Mutex<u16>>,
+    ephemeral_token: Option<String>,
 }
 
 impl<'a> Downloader<'a> {
@@ -104,10 +101,12 @@ impl<'a> Downloader<'a> {
             downloaded: Arc::new(Mutex::new(0)),
             failed: Arc::new(Mutex::new(0)),
             unsupported: Arc::new(Mutex::new(0)),
+            ephemeral_token: None,
         }
     }
 
-    pub async fn run(&self) -> Result<(), GertError> {
+    pub async fn run(&mut self) -> Result<(), GertError> {
+        self.maybe_get_redgif_token().await;
         for post in self.posts.iter() {
             self.process(post).await;
         }
@@ -195,6 +194,33 @@ impl<'a> Downloader<'a> {
         };
     }
 
+    async fn maybe_get_redgif_token(&mut self) {
+        let mut needs_token = false;
+        if self.ephemeral_token.is_none() {
+            for post in self.posts.iter() {
+                if post.get_type() == MediaType::RedGif {
+                    needs_token = true;
+                    break;
+                }
+            }
+        }
+
+        if needs_token {
+            let url = "https://api.redgifs.com/v2/auth/temporary";
+            let response = self
+                .session
+                .get(url)
+                .send()
+                .await
+                .unwrap()
+                .json::<TokenResponse>()
+                .await
+                .unwrap();
+            self.ephemeral_token = Some(response.token);
+            info!("Got redgif useragent: {}", response.agent);
+        }
+    }
+
     /// Download media from the given url and save to data directory. Also create data directory if not present already
     async fn download_media(&self, file_name: &str, url: &str) -> Result<bool, GertError> {
         // create directory if it does not already exist
@@ -243,7 +269,7 @@ impl<'a> Downloader<'a> {
             MediaType::RedditImage => self.download_reddit_image(post).await,
             MediaType::RedditGif => self.download_reddit_image(post).await,
             MediaType::RedditVideo => self.download_reddit_video(post).await,
-            MediaType::GfycatGif => self.download_gfycat(post).await,
+            MediaType::RedGif => {self.download_redgif(post).await},
             MediaType::GiphyGif => self.download_giphy(post).await,
             MediaType::ImgurGif => self.download_imgur_gif(post).await,
             MediaType::ImgurImage => self.download_imgur_image(post).await,
@@ -286,57 +312,24 @@ impl<'a> Downloader<'a> {
         Ok(())
     }
 
-    async fn download_gfycat(&self, post: &Post) -> Result<()> {
-        let url = post.data.url.as_ref().unwrap();
-        let extension = url.split('.').last().unwrap();
-        match extension {
-            MP4_EXTENSION => {
-                let task =
-                    DownloadTask::from_post(post, url.to_owned(), extension.to_owned(), None);
-                self.schedule_task(task).await;
-            }
-            _ => {
-                // Convert Gfycat/Redgifs GIFs into mp4 URLs for download
-                let api_prefix = if url.contains(GFYCAT_DOMAIN) {
-                    GFYCAT_API_PREFIX
-                } else {
-                    REDGIFS_API_PREFIX
-                };
-                let media_id = url
-                    .split('/')
-                    .last()
-                    .with_context(|| format!("Unsupported Gfycat URL: {}", url))?;
+    async fn download_redgif(&self, post: &Post) -> Result<()> {
+        let url =  post.get_url().unwrap();
+        let id = url.split('/').last().unwrap();
+        let api_url = format!("{}/{}", REDGIFS_API_PREFIX, id);
+        let token = self.ephemeral_token.as_ref().unwrap();
+        let response = self
+            .session
+            .get(&api_url)
+            .header("Authorization", format!{"Bearer {}", token})
+            .send()
+            .await
+            .context("Error contacting redgif API")?
+            .json::<RedGif>()
+            .await
+            .context(format!("Error parsing Redgif API response from {}", api_url))?;
 
-                let api_url = format!("{}/{}", api_prefix, media_id);
-                debug!("GFY API URL: {}", api_url);
-
-                // talk to gfycat API and get GIF information
-                let response = self
-                    .session
-                    .get(&api_url)
-                    .send()
-                    .await
-                    .context("Error getting response from GFYCAT API")?;
-                // if the gif is not available anymore, Gfycat might send
-                // a 404 response. Proceed to get the mp4 URL only if the
-                // response was HTTP 200
-                if response.status() == StatusCode::OK {
-                    let data = response
-                        .json::<GfyData>()
-                        .await
-                        .context("Error parsing JSON response from GFYCAT API")?;
-                    let task = DownloadTask::from_post(
-                        post,
-                        data.gfy_item.mp4_url,
-                        MP4_EXTENSION.to_owned(),
-                        None,
-                    );
-                    self.schedule_task(task).await;
-                } else {
-                    bail!("Gfycat API returned status code: {}", response.status());
-                }
-            }
-        }
+        let task = DownloadTask::from_post(post, response.gif.urls.hd, MP4_EXTENSION.to_owned(), None);
+        self.schedule_task(task).await;
         Ok(())
     }
 

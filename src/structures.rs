@@ -176,12 +176,6 @@ pub struct GalleryItem {
 }
 
 #[derive(Deserialize, Debug, Clone)]
-pub struct GfyData {
-    #[serde(rename = "gfyItem")]
-    pub gfy_item: GfyItem,
-}
-
-#[derive(Deserialize, Debug, Clone)]
 pub struct GfyItem {
     #[serde(rename = "gifUrl")]
     pub gif_url: String,
@@ -263,8 +257,8 @@ impl Post {
             return MediaType::RedditVideo;
         }
 
-        if url.contains(GFYCAT_DOMAIN) || url.contains(REDGIFS_DOMAIN) {
-            return MediaType::GfycatGif;
+        if  url.contains(REDGIFS_DOMAIN) {
+            return MediaType::RedGif;
         }
         if url.contains(GIPHY_DOMAIN) {
             return MediaType::GiphyGif;
@@ -290,4 +284,32 @@ impl Post {
         }
         MediaType::Unsupported
     }
+}
+
+
+#[derive(Deserialize, Debug, Clone)]
+pub struct TokenResponse {
+    pub token: String,
+    pub addr: String,
+    pub agent: String,
+    pub session: String,
+    pub rtfm: String,
+}
+
+#[derive(Deserialize, Debug, Clone)]
+pub struct MediaInfo {
+    pub sd: String,
+    pub hd: String,
+    pub poster: String,
+    pub thumbnail: String,
+    pub vthumbnail: String,
+}
+#[derive(Deserialize, Debug, Clone)]
+pub struct InnerGif{
+    pub id: String,
+    pub urls: MediaInfo,
+}
+#[derive(Deserialize, Debug, Clone)]
+pub struct RedGif{
+    pub gif: InnerGif,
 }
