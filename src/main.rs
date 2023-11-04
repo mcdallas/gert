@@ -54,7 +54,7 @@ async fn main() -> Result<(), GertError> {
                 .short("m")
                 .long("match")
                 .value_name("MATCH")
-                .help("Pass a regex expresion to filter the title of the post")
+                .help("Pass a regular expresion to filter the title of the post")
                 .takes_value(true),
         )
         .arg(
@@ -102,7 +102,7 @@ async fn main() -> Result<(), GertError> {
                 .multiple(true)
                 .value_name("SUBREDDIT")
                 .value_delimiter(",")
-                .help("Download media from these subreddit")
+                .help("Download media from these subreddits")
                 .takes_value(true)
                 .required_unless("url")
                 .conflicts_with("url"),
