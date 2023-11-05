@@ -322,7 +322,7 @@ async fn main() -> Result<(), GertError> {
         should_download,
         use_human_readable,
         ffmpeg_available,
-        &session,
+        session,
         conserve_gifs,
     );
 

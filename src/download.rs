@@ -2,8 +2,11 @@ use std::borrow::Borrow;
 use std::fs::File;
 use std::path::Path;
 use std::process::Stdio;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use std::{fs, io};
+use std::time::Instant;
+use futures::future::join_all;
+use tokio::sync::{Mutex as AsyncMutex, Semaphore};
 
 use anyhow::{anyhow, bail, Context, Result};
 use log::{debug, error, info, warn};
@@ -61,65 +64,85 @@ pub enum MediaType {
     Unsupported,
 }
 
-#[derive(Debug)]
-pub struct Downloader<'a> {
+#[derive(Debug, Clone)]
+pub struct Downloader {
     posts: Vec<Post>,
-    data_directory: &'a str,
+    data_directory: String,
     should_download: bool,
     use_human_readable: bool,
     ffmpeg_available: bool,
-    session: &'a reqwest::Client,
+    session: reqwest::Client,
     conserve_gifs: bool,
-    supported: Arc<Mutex<u16>>,
-    skipped: Arc<Mutex<u16>>,
-    downloaded: Arc<Mutex<u16>>,
-    failed: Arc<Mutex<u16>>,
-    unsupported: Arc<Mutex<u16>>,
+    supported: Arc<AsyncMutex<u16>>,
+    skipped: Arc<AsyncMutex<u16>>,
+    downloaded: Arc<AsyncMutex<u16>>,
+    failed: Arc<AsyncMutex<u16>>,
+    unsupported: Arc<AsyncMutex<u16>>,
     ephemeral_token: Option<String>,
 }
 
-impl<'a> Downloader<'a> {
+impl Downloader {
     pub fn new(
         posts: Vec<Post>,
-        data_directory: &'a str,
+        data_directory: &str,
         should_download: bool,
         use_human_readable: bool,
         ffmpeg_available: bool,
-        session: &'a reqwest::Client,
+        session: reqwest::Client,
         conserve_gifs: bool,
-    ) -> Downloader<'a> {
+    ) -> Downloader {
         Downloader {
             posts,
-            data_directory,
+            data_directory: data_directory.to_owned(),
             should_download,
             use_human_readable,
             ffmpeg_available,
             session,
             conserve_gifs,
-            supported: Arc::new(Mutex::new(0)),
-            skipped: Arc::new(Mutex::new(0)),
-            downloaded: Arc::new(Mutex::new(0)),
-            failed: Arc::new(Mutex::new(0)),
-            unsupported: Arc::new(Mutex::new(0)),
+            supported: Arc::new(AsyncMutex::new(0)),
+            skipped: Arc::new(AsyncMutex::new(0)),
+            downloaded: Arc::new(AsyncMutex::new(0)),
+            failed: Arc::new(AsyncMutex::new(0)),
+            unsupported: Arc::new(AsyncMutex::new(0)),
             ephemeral_token: None,
         }
     }
 
     pub async fn run(&mut self) -> Result<(), GertError> {
+        let start = Instant::now();
         if self.maybe_get_redgif_token().await.is_err() {
             error!("Could not create Redgif API token.");
         }
-        for post in self.posts.iter() {
-            self.process(post).await;
+
+        let downloader = Arc::new(self.clone());
+        let semaphore = Arc::new(Semaphore::new(10)); // limit to 10 concurrent tasks
+        let mut handles = Vec::new();
+        let posts = Arc::new(std::mem::take(&mut self.posts));
+
+        for i in 0..posts.len() {
+            
+            let permit = semaphore.clone().acquire_owned().await.unwrap();
+            let dl = downloader.clone();
+            let posts = Arc::clone(&posts);
+            let handle = tokio::spawn(async move {
+                dl.process(&posts[i]).await;
+                drop(permit);
+            });
+    
+            handles.push(handle);
         }
 
+        join_all(handles).await;
+        
+        let end = Instant::now();
         info!("#####################################");
         info!("Download Summary:");
-        info!("Number of supported media: {}", *self.supported.lock().unwrap());
-        info!("Number of unsupported links: {}", *self.unsupported.lock().unwrap());
-        info!("Number of media downloaded: {}", *self.downloaded.lock().unwrap());
-        info!("Number of media skipped: {}", *self.skipped.lock().unwrap());
-        info!("Number of media failed to download: {}", *self.failed.lock().unwrap());
+        info!("Number of supported media: {}", *self.supported.lock().await);
+        info!("Number of unsupported links: {}", *self.unsupported.lock().await);
+        info!("Number of media downloaded: {}", *self.downloaded.lock().await);
+        info!("Number of media skipped: {}", *self.skipped.lock().await);
+        info!("Number of media failed to download: {}", *self.failed.lock().await);
+        info!("Time taken: {:.2} seconds", (end - start).as_secs_f64());
         info!("#####################################");
         info!("FIN.");
 
@@ -259,12 +282,12 @@ impl<'a> Downloader<'a> {
             MediaType::StreamableVideo => self.download_streamable_video(post).await,
             _ => {
                 debug!("Unsupported URL: {:?}", post.get_url());
-                *self.unsupported.lock().unwrap() += 1;
+                *self.unsupported.lock().await += 1;
                 Ok(())
             }
         };
         if let Err(e) = result {
-            self.fail(e);
+            self.fail(e).await;
         }
     }
 
@@ -501,25 +524,25 @@ impl<'a> Downloader<'a> {
         Ok(())
     }
 
-    fn fail(&self, e: anyhow::Error) {
+    async fn fail(&self, e: anyhow::Error) {
         error!("{}", e);
-        *self.failed.lock().unwrap() += 1;
+        *self.failed.lock().await += 1;
     }
 
-    fn skip(&self, msg: &str) {
+    async fn skip(&self, msg: &str) {
         debug!("{}", msg);
-        *self.skipped.lock().unwrap() += 1;
+        *self.skipped.lock().await += 1;
     }
 
     async fn schedule_task(&self, task: DownloadTask) -> Option<String> {
         debug!("Received task: {:?}", task);
         {
-            *self.supported.lock().unwrap() += 1;
+            *self.supported.lock().await += 1;
         }
 
         if !self.should_download {
             let msg = format!("Found media at: {}", task.url);
-            self.skip(&msg);
+            self.skip(&msg).await;
             return None;
         }
         let file_name = self.get_filename(&task);
@@ -529,7 +552,7 @@ impl<'a> Downloader<'a> {
             || check_path_present(&file_name.replace(".zip", ".jpg"))
         {
             let msg = format!("Media from url {} already downloaded. Skipping...", task.url);
-            self.skip(&msg);
+            self.skip(&msg).await;
             return None;
         }
 
@@ -537,7 +560,7 @@ impl<'a> Downloader<'a> {
         match result {
             Ok(true) => {
                 {
-                    *self.downloaded.lock().unwrap() += 1;
+                    *self.downloaded.lock().await += 1;
                 }
 
                 match self.post_process(file_name, &task).await {
@@ -549,11 +572,11 @@ impl<'a> Downloader<'a> {
                 }
             }
             Ok(false) => {
-                self.fail(anyhow!("Failed to download media from url: {}", task.url));
+                self.fail(anyhow!("Failed to download media from url: {}", task.url)).await;
                 None
             }
             Err(e) => {
-                self.fail(anyhow!("Error while downloading media from url {}: {}", task.url, e));
+                self.fail(anyhow!("Error while downloading media from url {}: {}", task.url, e)).await;
                 None
             }
         }
