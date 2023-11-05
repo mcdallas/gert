@@ -31,7 +31,7 @@ pub static IMGUR_DOMAIN: &str = "imgur.com";
 pub static IMGUR_SUBDOMAIN: &str = "i.imgur.com";
 
 pub static REDGIFS_DOMAIN: &str = "redgifs.com";
-static REDGIFS_API_PREFIX: &str = "https://api.redgifs.com/v2/gifs";
+static REDGIFS_API_PREFIX: &str = "https://api.redgifs.com/v2";
 
 pub static GIPHY_DOMAIN: &str = "giphy.com";
 static GIPHY_MEDIA_SUBDOMAIN: &str = "media.giphy.com";
@@ -106,7 +106,9 @@ impl<'a> Downloader<'a> {
     }
 
     pub async fn run(&mut self) -> Result<(), GertError> {
-        self.maybe_get_redgif_token().await;
+        if self.maybe_get_redgif_token().await.is_err() {
+            error!("Could not create Redgif API token.");
+        }
         for post in self.posts.iter() {
             self.process(post).await;
         }
@@ -154,33 +156,12 @@ impl<'a> Downloader<'a> {
                 format!("{}/{}/{:x}.{}", self.data_directory, subreddit, hash, extension)
             }
         } else {
+            let disallowed_chars = [' ', '.', '/', '\\', ':', '=', '?', '"', '<', '>', '|', '*'];
             let canonical_title: String = title
                 .to_lowercase()
                 .chars()
-                // to make sure file names don't exceed operating system maximums, truncate at 200
-                // you could possibly stretch beyond 200, but this is a conservative estimate that
-                // leaves 55 bytes for the name string
-                .take(200)
-                .enumerate()
-                .map(|(_, c)| {
-                    if c.is_whitespace()
-                        || c == '.'
-                        || c == '/'
-                        || c == '\\'
-                        || c == ':'
-                        || c == '='
-                        || c == '?'
-                        || c == '"'
-                        || c == '<'
-                        || c == '>'
-                        || c == '|'
-                        || c == '*'
-                    {
-                        '_'
-                    } else {
-                        c
-                    }
-                })
+                .take(200) // Truncate to avoid file system limits
+                .map(|c| if disallowed_chars.contains(&c) { '_' } else { c })
                 .collect();
             // create a canonical human readable file name using the post's title
             // note that the name of the post is something of the form t3_<randomstring>
@@ -194,7 +175,7 @@ impl<'a> Downloader<'a> {
         };
     }
 
-    async fn maybe_get_redgif_token(&mut self) {
+    async fn maybe_get_redgif_token(&mut self) -> Result<()> {
         let mut needs_token = false;
         if self.ephemeral_token.is_none() {
             for post in self.posts.iter() {
@@ -206,19 +187,19 @@ impl<'a> Downloader<'a> {
         }
 
         if needs_token {
-            let url = "https://api.redgifs.com/v2/auth/temporary";
+            let url = format!("{}/auth/temporary", REDGIFS_API_PREFIX);
             let response = self
                 .session
                 .get(url)
                 .send()
                 .await
-                .unwrap()
+                .context("Error contacting redgif API")?
                 .json::<TokenResponse>()
                 .await
-                .unwrap();
+                .context("Error parsing redgif API response")?;
             self.ephemeral_token = Some(response.token);
-            info!("Got redgif useragent: {}", response.agent);
         }
+        Ok(())
     }
 
     /// Download media from the given url and save to data directory. Also create data directory if not present already
@@ -298,7 +279,7 @@ impl<'a> Downloader<'a> {
                 ext = media.m.split('/').last().unwrap();
             }
             let url = format!("https://{}/{}.{}", REDDIT_IMAGE_SUBDOMAIN, item.media_id, ext);
-            let task = DownloadTask::from_post(post, url, ext.to_owned(), Some(index));
+            let task = DownloadTask::from_post(post, url, ext, Some(index));
             self.schedule_task(task).await;
         }
         Ok(())
@@ -307,7 +288,7 @@ impl<'a> Downloader<'a> {
     async fn download_reddit_image(&self, post: &Post) -> Result<()> {
         let url = post.get_url().unwrap();
         let extension = url.split('.').last().unwrap();
-        let task = DownloadTask::from_post(post, url.to_owned(), extension.to_owned(), None);
+        let task = DownloadTask::from_post(post, &url, extension, None);
         self.schedule_task(task).await;
         Ok(())
     }
@@ -315,8 +296,8 @@ impl<'a> Downloader<'a> {
     async fn download_redgif(&self, post: &Post) -> Result<()> {
         let url =  post.get_url().unwrap();
         let id = url.split('/').last().unwrap();
-        let api_url = format!("{}/{}", REDGIFS_API_PREFIX, id);
-        let token = self.ephemeral_token.as_ref().unwrap();
+        let api_url = format!("{}/gifs/{}", REDGIFS_API_PREFIX, id);
+        let token = self.ephemeral_token.as_ref().context("No Redgif token found")?;
         let response = self
             .session
             .get(&api_url)
@@ -328,7 +309,7 @@ impl<'a> Downloader<'a> {
             .await
             .context(format!("Error parsing Redgif API response from {}", api_url))?;
 
-        let task = DownloadTask::from_post(post, response.gif.urls.hd, MP4.to_owned(), None);
+        let task = DownloadTask::from_post(post, response.gif.urls.hd, MP4, None);
         self.schedule_task(task).await;
         Ok(())
     }
@@ -377,12 +358,12 @@ impl<'a> Downloader<'a> {
             }
         }
 
-        let video_task = DownloadTask::from_post(post, video_url, MP4.to_owned(), None);
+        let video_task = DownloadTask::from_post(post, video_url, MP4, None);
         let video_filename = self.schedule_task(video_task).await;
 
         if maybe_audio.is_some() {
             let audio_url = format!("{}/{}", base_path, maybe_audio.unwrap());
-            let audio_task = DownloadTask::from_post(post, audio_url, MP4.to_owned(), Some(1));
+            let audio_task = DownloadTask::from_post(post, audio_url, MP4, Some(1));
             let audio_filename = self.schedule_task(audio_task).await;
 
             if let (Some(video_filename), Some(audio_filename)) =
@@ -414,7 +395,7 @@ impl<'a> Downloader<'a> {
             match extension {
                 GIF | MP4 | GIFV => {
                     let task =
-                        DownloadTask::from_post(post, url.to_owned(), extension.to_owned(), None);
+                        DownloadTask::from_post(post, url, extension, None);
                     self.schedule_task(task).await;
                 }
                 _ => {
@@ -425,7 +406,7 @@ impl<'a> Downloader<'a> {
                     let giphy_url =
                         format!("https://{}/media/{}.gif", GIPHY_MEDIA_SUBDOMAIN, media_id);
                     let task =
-                        DownloadTask::from_post(post, giphy_url, GIF.to_owned(), None);
+                        DownloadTask::from_post(post, giphy_url, GIF, None);
                     self.schedule_task(task).await;
                 }
             }
@@ -451,7 +432,7 @@ impl<'a> Downloader<'a> {
         let url = post.data.url.as_ref().unwrap();
         let extension = url.split('.').last().unwrap();
 
-        let task = DownloadTask::from_post(post, url.to_owned(), extension.to_owned(), None);
+        let task = DownloadTask::from_post(post, url, extension, None);
         self.schedule_task(task).await;
         Ok(())
     }
@@ -463,7 +444,7 @@ impl<'a> Downloader<'a> {
         let url = format!("{}.jpg", url);
         let success = check_url_has_mime_type(&url, mime::JPEG).await.unwrap_or(false);
         if success {
-            let task = DownloadTask::from_post(post, url, JPG.to_owned(), None);
+            let task = DownloadTask::from_post(post, url, JPG, None);
             self.schedule_task(task).await;
             return Ok(());
         }
@@ -471,7 +452,7 @@ impl<'a> Downloader<'a> {
         let url = format!("{}.png", url);
         let success = check_url_has_mime_type(&url, mime::PNG).await.unwrap_or(false);
         if success {
-            let task = DownloadTask::from_post(post, url, PNG.to_owned(), None);
+            let task = DownloadTask::from_post(post, url, PNG, None);
             self.schedule_task(task).await;
             return Ok(());
         }
@@ -485,7 +466,7 @@ impl<'a> Downloader<'a> {
         tokens.push("zip");
         let url = tokens.join("/");
 
-        let task = DownloadTask::from_post(post, url, ZIP.to_owned(), None);
+        let task = DownloadTask::from_post(post, url, ZIP, None);
         self.schedule_task(task).await;
         Ok(())
     }
@@ -704,16 +685,16 @@ struct DownloadTask {
     index: Option<usize>,
 }
 impl DownloadTask {
-    fn from_post(
+    fn from_post<U: Into<String>, V: Into<String>>(
         post: &Post,
-        url: String,
-        extension: String,
+        url: U,
+        extension: V,
         index: Option<usize>,
     ) -> DownloadTask {
         DownloadTask {
-            url,
+            url: url.into(),
             subreddit: post.data.subreddit.to_owned(),
-            extension,
+            extension: extension.into(),
             post_name: post.data.name.to_owned(),
             post_title: post.data.title.clone().unwrap(),
             index,
