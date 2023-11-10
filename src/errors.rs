@@ -37,4 +37,6 @@ pub enum GertError {
     FfmpegError(String),
     #[error("Error unzipping file")]
     ZipError(#[from] zip::result::ZipError),
+    #[error("Media has been removed from imgur")]
+    ImgurRemovedError,
 }

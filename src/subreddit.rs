@@ -1,6 +1,6 @@
 use crate::errors::GertError;
 use crate::structures::{Listing, Post};
-use log::debug;
+use log::{debug, error};
 use reqwest::Client;
 use std::fmt::Write;
 
@@ -44,8 +44,8 @@ impl Subreddit<'_> {
             .await
             .expect("Bad response")
             .json::<Listing>()
-            .await
-            .expect("Failed to parse JSON"))
+            .await?
+        )
         // Ok(self.client.get(url).send().await.expect("Bad response").json::<Listing>().await.expect("Failed to parse JSON"))
     }
 
@@ -71,13 +71,26 @@ impl Subreddit<'_> {
         while remaining > 0 {
             debug!("Fetching page {} of {} from r/{} [{}]", page, limit / 100, self.name, feed);
             let limit = if remaining > 100 { 100 } else { remaining };
-            let listing = self.get_feed(feed, limit, period, after).await?;
+            let listing_result = self.get_feed(feed, limit, period, after).await;
 
-            posts.extend(listing.data.children.into_iter().collect::<Vec<Post>>());
-            let last_post = posts.last().unwrap();
-            after = Some(&last_post.data.name);
-            remaining -= limit;
-            page += 1;
+            match listing_result {
+                Ok(listing) => {
+                    if !listing.data.children.is_empty() {
+                        posts.extend(listing.data.children.into_iter().collect::<Vec<Post>>());
+                        let last_post = posts.last().unwrap();
+                        after = Some(&last_post.data.name);
+                        remaining -= limit;
+                        page += 1;
+                    } else {
+                        error!("Failed to fetch posts from r/{}", self.name);
+                        remaining = 0;
+                    }
+                }
+                Err(_error) => {
+                    error!("Failed to fetch posts from r/{}", self.name);
+                    remaining = 0;
+                }
+            }
         }
         Ok(posts)
     }

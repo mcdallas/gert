@@ -239,7 +239,19 @@ impl Downloader {
         let maybe_response = self.session.get(url).send().await;
         if let Ok(response) = maybe_response {
             // debug!("URL Response: {:#?}", response);
+
+            let url = response.url().to_owned();
+            let host_and_path = match url.host_str() {
+                Some(domain) => format!("{}{}", domain, url.path()),
+                None => return Err(GertError::UrlError(url::ParseError::EmptyHost)),
+            };
+
+            if host_and_path.contains("i.imgur.com/removed") {
+                return Err(GertError::ImgurRemovedError);
+            }
+
             let maybe_data = response.bytes().await;
+
             if let Ok(data) = maybe_data {
                 debug!("Bytes length of the data: {:#?}", data.len());
                 let maybe_output = File::create(file_name);
@@ -340,6 +352,11 @@ impl Downloader {
     async fn download_reddit_video(&self, post: &Post) -> Result<()> {
         let post_url = post.data.url.as_ref().unwrap();
         let extension = post_url.split('.').last().unwrap();
+
+        if post.data.media.is_none() {
+            bail!("No media data found for this post {}", post_url);
+        }
+
         let dash_url = &post.data.media.as_ref().unwrap().reddit_video.as_ref().unwrap().dash_url;
 
         let url = match extension {
@@ -552,6 +569,7 @@ impl Downloader {
             || check_path_present(&file_name.replace(".zip", ".jpg"))
         {
             let msg = format!("Media from url {} already downloaded. Skipping...", task.url);
+            error!("{}", msg);
             self.skip(&msg).await;
             return None;
         }
@@ -576,8 +594,15 @@ impl Downloader {
                 None
             }
             Err(e) => {
-                self.fail(anyhow!("Error while downloading media from url {}: {}", task.url, e)).await;
-                None
+                if let GertError::ImgurRemovedError = e {
+                    let msg = format!("Media from url {} has been removed from imgur. Skipping...", task.url);
+                    error!("{}", msg);
+                    self.skip(&msg).await;
+                    None
+                } else {
+                    self.fail(anyhow!("Error while downloading media from url {}: {}", task.url, e)).await;
+                    None
+                }
             }
         }
     }
