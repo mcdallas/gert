@@ -352,11 +352,6 @@ impl Downloader {
     async fn download_reddit_video(&self, post: &Post) -> Result<()> {
         let post_url = post.data.url.as_ref().unwrap();
         let extension = post_url.split('.').last().unwrap();
-
-        if post.data.media.is_none() {
-            bail!("No media data found for this post {}", post_url);
-        }
-
         let dash_url = &post.data.media.as_ref().unwrap().reddit_video.as_ref().unwrap().dash_url;
 
         let url = match extension {
@@ -569,7 +564,6 @@ impl Downloader {
             || check_path_present(&file_name.replace(".zip", ".jpg"))
         {
             let msg = format!("Media from url {} already downloaded. Skipping...", task.url);
-            error!("{}", msg);
             self.skip(&msg).await;
             return None;
         }
@@ -593,16 +587,13 @@ impl Downloader {
                 self.fail(anyhow!("Failed to download media from url: {}", task.url)).await;
                 None
             }
+            Err(GertError::ImgurRemovedError) => {
+                self.skip(&format!("Media from url {} has been removed from imgur. Skipping...", task.url)).await;
+                None
+            }
             Err(e) => {
-                if let GertError::ImgurRemovedError = e {
-                    let msg = format!("Media from url {} has been removed from imgur. Skipping...", task.url);
-                    error!("{}", msg);
-                    self.skip(&msg).await;
-                    None
-                } else {
-                    self.fail(anyhow!("Error while downloading media from url {}: {}", task.url, e)).await;
-                    None
-                }
+                self.fail(anyhow!("Error while downloading media from url {}: {}", task.url, e)).await;
+                None
             }
         }
     }

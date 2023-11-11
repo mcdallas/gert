@@ -254,7 +254,11 @@ impl Post {
             }
         }
         if url.contains(REDDIT_VIDEO_SUBDOMAIN) {
-            return MediaType::RedditVideo;
+            if self.data.media.is_none() {
+               return MediaType::Unsupported 
+            } else {
+                return MediaType::RedditVideo;
+            }
         }
 
         if  url.contains(REDGIFS_DOMAIN) {
