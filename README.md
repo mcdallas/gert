@@ -64,10 +64,10 @@ gert https://old.reddit.com/r/wallpapers/comments/tckky1/some_walls_from_my_coll
 Simple CLI tool to download media from Reddit
 
 USAGE:
-    gert [FLAGS] [OPTIONS] --subreddit <SUBREDDIT>...
+    gert [FLAGS] [OPTIONS] <URL> --subreddit <SUBREDDIT>...
 
 FLAGS:
-    -c  --conserve-gifs     Disable gif to mp4 conversion
+    -c, --conserve-gifs     Disable gif to mp4 conversion
         --debug             Show the current config being used
     -r, --dry-run           Dry run and print the URLs of saved media to download
     -h, --help              Prints help information
@@ -78,11 +78,15 @@ OPTIONS:
     -e, --from-env <ENV_FILE>         Set a custom .env style file with secrets
     -f, --feed <feed>                 Feed to download from [default: hot]  [possible values: hot, new, top, rising]
     -l, --limit <LIMIT>               Limit the number of posts to download [default: 25]
-    -m, --match <MATCH>               Pass a regex expresion to filter the title of the post
+    -m, --match <MATCH>               Pass a regular expresion to filter the title of the post
     -o, --output <DATA_DIR>           Directory to save the media to [default: .]
-    -p, --period <PERIOD>             Time period to download from [default: day]  [possible values: now, hour, day, week, month, year, all]
-    -s, --subreddit <SUBREDDIT>...    Download media from these subreddit
+    -p, --period <PERIOD>             Time period to download from [default: day]  [possible values: now, hour, day,
+                                      week, month, year, all]
+    -s, --subreddit <SUBREDDIT>...    Download media from these subreddits
     -u, --upvotes <NUM>               Minimum number of upvotes to download [default: 0]
+
+ARGS:
+    <URL>    URL of a single post to download
 ```
 
 
