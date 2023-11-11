@@ -1,11 +1,11 @@
+use futures::future::join_all;
 use std::borrow::Borrow;
 use std::fs::File;
 use std::path::Path;
 use std::process::Stdio;
 use std::sync::Arc;
-use std::{fs, io};
 use std::time::Instant;
-use futures::future::join_all;
+use std::{fs, io};
 use tokio::sync::{Mutex as AsyncMutex, Semaphore};
 
 use anyhow::{anyhow, bail, Context, Result};
@@ -14,8 +14,8 @@ use url::{Position, Url};
 
 use crate::errors::GertError;
 use crate::structs::Post;
-use crate::structs::{StreamableApiResponse, TokenResponse, RedGif};
-use crate::utils::{check_path_present, check_url_has_mime_type, parse_mpd, contains_any};
+use crate::structs::{RedGif, StreamableApiResponse, TokenResponse};
+use crate::utils::{check_path_present, check_url_has_mime_type, contains_any, parse_mpd};
 
 pub static JPG: &str = "jpg";
 pub static PNG: &str = "png";
@@ -128,7 +128,6 @@ impl Downloader {
         let posts = Arc::new(std::mem::take(&mut self.posts));
 
         for i in 0..posts.len() {
-            
             let permit = semaphore.clone().acquire_owned().await.unwrap();
             let dl = downloader.clone();
             let posts = Arc::clone(&posts);
@@ -136,12 +135,12 @@ impl Downloader {
                 dl.process(&posts[i]).await;
                 drop(permit);
             });
-    
+
             handles.push(handle);
         }
 
         join_all(handles).await;
-        
+
         let end = Instant::now();
         info!("#####################################");
         info!("Download Summary:");
@@ -293,7 +292,7 @@ impl Downloader {
             MediaType::RedditImage => self.download_reddit_image(post).await,
             MediaType::RedditGif => self.download_reddit_image(post).await,
             MediaType::RedditVideo => self.download_reddit_video(post).await,
-            MediaType::RedGif => {self.download_redgif(post).await},
+            MediaType::RedGif => self.download_redgif(post).await,
             MediaType::GiphyGif => self.download_giphy(post).await,
             MediaType::ImgurGif => self.download_imgur_gif(post).await,
             MediaType::ImgurImage => self.download_imgur_image(post).await,
@@ -337,14 +336,14 @@ impl Downloader {
     }
 
     async fn download_redgif(&self, post: &Post) -> Result<()> {
-        let url =  post.get_url().unwrap();
+        let url = post.get_url().unwrap();
         let id = url.split('/').last().unwrap();
         let api_url = format!("{}/gifs/{}", REDGIFS_API_PREFIX, id);
         let token = self.ephemeral_token.as_ref().context("No Redgif token found")?;
         let response = self
             .session
             .get(&api_url)
-            .header("Authorization", format!{"Bearer {}", token})
+            .header("Authorization", format! {"Bearer {}", token})
             .send()
             .await
             .context("Error contacting redgif API")?
@@ -385,16 +384,18 @@ impl Downloader {
             }
         };
 
-        let dash_video = url.split('/').last().context(format!("Unsupported reddit video URL: {}", url))?;
+        let dash_video =
+            url.split('/').last().context(format!("Unsupported reddit video URL: {}", url))?;
 
         let (maybe_video, maybe_audio) = parse_mpd(&dash_url).await;
 
         let mut video_url = url.clone();
-        let base_path = &url.split('/').collect::<Vec<&str>>()[..url.split('/').count() - 1].join("/");
+        let base_path =
+            &url.split('/').collect::<Vec<&str>>()[..url.split('/').count() - 1].join("/");
 
         if !dash_video.contains("DASH") {
             // get the video URL from the MPD file
-            if maybe_video.is_none(){
+            if maybe_video.is_none() {
                 bail!("Could not find video in MPD");
             } else {
                 video_url = format!("{}/{}", base_path, maybe_video.unwrap());
@@ -409,9 +410,7 @@ impl Downloader {
             let audio_task = DownloadTask::from_post(post, audio_url, MP4, Some(1));
             let audio_filename = self.schedule_task(audio_task).await;
 
-            if let (Some(video_filename), Some(audio_filename)) =
-                (video_filename, audio_filename)
-            {
+            if let (Some(video_filename), Some(audio_filename)) = (video_filename, audio_filename) {
                 // merge the audio and video files
                 if self.stitch_audio_video(&video_filename, &audio_filename).await.is_err() {
                     debug!("Error merging audio and video files");
@@ -427,13 +426,11 @@ impl Downloader {
         let parsed = Url::parse(url).unwrap();
         let extension = url.split('.').last().unwrap();
 
-        if contains_any(url, &GIPHY_MEDIA_SUBDOMAINS)
-        {
+        if contains_any(url, &GIPHY_MEDIA_SUBDOMAINS) {
             // if we encounter gif, mp4 or gifv - download as is
             match extension {
                 GIF | MP4 | GIFV => {
-                    let task =
-                        DownloadTask::from_post(post, url, extension, None);
+                    let task = DownloadTask::from_post(post, url, extension, None);
                     self.schedule_task(task).await;
                 }
                 _ => {
@@ -443,8 +440,7 @@ impl Downloader {
                     let media_id = path.split('-').last().unwrap();
                     let giphy_url =
                         format!("https://{}/media/{}.gif", GIPHY_MEDIA_SUBDOMAIN, media_id);
-                    let task =
-                        DownloadTask::from_post(post, giphy_url, GIF, None);
+                    let task = DownloadTask::from_post(post, giphy_url, GIF, None);
                     self.schedule_task(task).await;
                 }
             }
@@ -456,12 +452,7 @@ impl Downloader {
         let url = post.data.url.as_ref().unwrap();
 
         // if the extension is gifv, then replace gifv->mp4 to get the video URL
-        let task = DownloadTask::from_post(
-            post,
-            url.replace(".gifv", ".mp4"),
-            MP4,
-            None,
-        );
+        let task = DownloadTask::from_post(post, url.replace(".gifv", ".mp4"), MP4, None);
         self.schedule_task(task).await;
         Ok(())
     }
@@ -590,11 +581,16 @@ impl Downloader {
                 None
             }
             Err(GertError::ImgurRemovedError) => {
-                self.skip(&format!("Media from url {} has been removed from imgur. Skipping...", task.url)).await;
+                self.skip(&format!(
+                    "Media from url {} has been removed from imgur. Skipping...",
+                    task.url
+                ))
+                .await;
                 None
             }
             Err(e) => {
-                self.fail(anyhow!("Error while downloading media from url {}: {}", task.url, e)).await;
+                self.fail(anyhow!("Error while downloading media from url {}: {}", task.url, e))
+                    .await;
                 None
             }
         }

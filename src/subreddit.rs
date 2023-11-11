@@ -37,15 +37,7 @@ impl Subreddit<'_> {
         }
         let url = &url.to_owned();
         debug!("Fetching posts from {}]", url);
-        Ok(self
-            .client
-            .get(url)
-            .send()
-            .await
-            .expect("Bad response")
-            .json::<Listing>()
-            .await?
-        )
+        Ok(self.client.get(url).send().await.expect("Bad response").json::<Listing>().await?)
         // Ok(self.client.get(url).send().await.expect("Bad response").json::<Listing>().await.expect("Failed to parse JSON"))
     }
 

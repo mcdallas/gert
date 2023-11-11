@@ -1,7 +1,7 @@
+use crate::utils::has_extension;
 use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::Value;
 use std::{collections::HashMap, ops::Add};
-use crate::utils::has_extension;
 
 /// Data structure that represents a user's info
 #[derive(Debug, Serialize, Deserialize)]
@@ -243,8 +243,7 @@ impl Post {
         if url.contains(REDDIT_IMAGE_SUBDOMAIN) {
             // if the URL uses the reddit image subdomain and if the extension is
             // jpg, png or gif, then we can use the URL as is.
-            if has_extension(&url, &[JPG, PNG, JPEG]) 
-            {
+            if has_extension(&url, &[JPG, PNG, JPEG]) {
                 return MediaType::RedditImage;
             } else if has_extension(&url, &[GIF]) {
                 return MediaType::RedditGif;
@@ -254,13 +253,13 @@ impl Post {
         }
         if url.contains(REDDIT_VIDEO_SUBDOMAIN) {
             if self.data.media.is_none() {
-               return MediaType::Unsupported 
+                return MediaType::Unsupported;
             } else {
                 return MediaType::RedditVideo;
             }
         }
 
-        if  url.contains(REDGIFS_DOMAIN) {
+        if url.contains(REDGIFS_DOMAIN) {
             return MediaType::RedGif;
         }
         if url.contains(GIPHY_DOMAIN) {
@@ -289,7 +288,6 @@ impl Post {
     }
 }
 
-
 #[derive(Deserialize, Debug, Clone)]
 pub struct TokenResponse {
     pub token: String,
@@ -308,11 +306,11 @@ pub struct MediaInfo {
     pub vthumbnail: String,
 }
 #[derive(Deserialize, Debug, Clone)]
-pub struct InnerGif{
+pub struct InnerGif {
     pub id: String,
     pub urls: MediaInfo,
 }
 #[derive(Deserialize, Debug, Clone)]
-pub struct RedGif{
+pub struct RedGif {
     pub gif: InnerGif,
 }
