@@ -145,3 +145,11 @@ pub async fn parse_mpd(url: &str) -> (Option<String>, Option<String>) {
     // println!("Highest quality audio URL: {:?}", max_audio_url);
     return (max_video_url, max_audio_url);
 }
+
+pub fn has_extension(url: &str, extensions: &[&str]) -> bool {
+    extensions.iter().any(|&ext| url.ends_with(ext))
+}
+
+pub fn contains_any(url: &str, substrings: &[&str]) -> bool {
+    substrings.iter().any(|&substring| url.contains(substring))
+}

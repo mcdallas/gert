@@ -1,6 +1,7 @@
 use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::Value;
 use std::{collections::HashMap, ops::Add};
+use crate::utils::has_extension;
 
 /// Data structure that represents a user's info
 #[derive(Debug, Serialize, Deserialize)]
@@ -242,12 +243,10 @@ impl Post {
         if url.contains(REDDIT_IMAGE_SUBDOMAIN) {
             // if the URL uses the reddit image subdomain and if the extension is
             // jpg, png or gif, then we can use the URL as is.
-            if url.ends_with(JPG)
-                || url.ends_with(PNG)
-                || url.ends_with(JPEG)
+            if has_extension(&url, &[JPG, PNG, JPEG]) 
             {
                 return MediaType::RedditImage;
-            } else if url.ends_with(GIF) {
+            } else if has_extension(&url, &[GIF]) {
                 return MediaType::RedditGif;
             } else {
                 warn!("Unsupported reddit URL: {}", url);
@@ -272,9 +271,9 @@ impl Post {
                 return MediaType::ImgurAlbum;
             }
             if url.contains(IMGUR_SUBDOMAIN) {
-                if url.ends_with(GIFV) || url.ends_with(GIF) {
+                if has_extension(&url, &[GIFV, GIF, MP4]) {
                     return MediaType::ImgurGif;
-                } else if url.ends_with(PNG) || url.ends_with(JPG) {
+                } else if has_extension(&url, &[JPG, JPEG, PNG]) {
                     return MediaType::ImgurImage;
                 } else {
                     warn!("Unsupported imgur URL: {}", url);

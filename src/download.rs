@@ -15,15 +15,15 @@ use url::{Position, Url};
 use crate::errors::GertError;
 use crate::structures::Post;
 use crate::structures::{StreamableApiResponse, TokenResponse, RedGif};
-use crate::utils::{check_path_present, check_url_has_mime_type, parse_mpd};
+use crate::utils::{check_path_present, check_url_has_mime_type, parse_mpd, contains_any};
 
 pub static JPG: &str = "jpg";
 pub static PNG: &str = "png";
 pub static JPEG: &str = "jpeg";
 pub const GIF: &str = "gif";
 pub const GIFV: &str = "gifv";
-const MP4: &str = "mp4";
-const ZIP: &str = "zip";
+pub const MP4: &str = "mp4";
+pub const ZIP: &str = "zip";
 
 // static REDDIT_DOMAIN: &str = "reddit.com";
 pub static REDDIT_IMAGE_SUBDOMAIN: &str = "i.redd.it";
@@ -43,6 +43,14 @@ static GIPHY_MEDIA_SUBDOMAIN_1: &str = "media1.giphy.com";
 static GIPHY_MEDIA_SUBDOMAIN_2: &str = "media2.giphy.com";
 static GIPHY_MEDIA_SUBDOMAIN_3: &str = "media3.giphy.com";
 static GIPHY_MEDIA_SUBDOMAIN_4: &str = "media4.giphy.com";
+static GIPHY_MEDIA_SUBDOMAINS: [&str; 6] = [
+    GIPHY_MEDIA_SUBDOMAIN,
+    GIPHY_MEDIA_SUBDOMAIN_0,
+    GIPHY_MEDIA_SUBDOMAIN_1,
+    GIPHY_MEDIA_SUBDOMAIN_2,
+    GIPHY_MEDIA_SUBDOMAIN_3,
+    GIPHY_MEDIA_SUBDOMAIN_4,
+];
 
 pub static STREAMABLE_DOMAIN: &str = "streamable.com";
 static STREAMABLE_API: &str = "https://api.streamable.com/videos";
@@ -419,12 +427,7 @@ impl Downloader {
         let parsed = Url::parse(url).unwrap();
         let extension = url.split('.').last().unwrap();
 
-        if url.contains(GIPHY_MEDIA_SUBDOMAIN)
-            || url.contains(GIPHY_MEDIA_SUBDOMAIN_0)
-            || url.contains(GIPHY_MEDIA_SUBDOMAIN_1)
-            || url.contains(GIPHY_MEDIA_SUBDOMAIN_2)
-            || url.contains(GIPHY_MEDIA_SUBDOMAIN_3)
-            || url.contains(GIPHY_MEDIA_SUBDOMAIN_4)
+        if contains_any(url, &GIPHY_MEDIA_SUBDOMAINS)
         {
             // if we encounter gif, mp4 or gifv - download as is
             match extension {
@@ -456,7 +459,7 @@ impl Downloader {
         let task = DownloadTask::from_post(
             post,
             url.replace(".gifv", ".mp4"),
-            MP4.to_owned(),
+            MP4,
             None,
         );
         self.schedule_task(task).await;
@@ -528,9 +531,8 @@ impl Downloader {
         }
 
         let video_url = parsed.files.get(MP4).unwrap().url.borrow().to_owned().unwrap();
-        let ext = MP4.to_owned();
 
-        let task = DownloadTask::from_post(post, video_url, ext, None);
+        let task = DownloadTask::from_post(post, video_url, MP4, None);
         self.schedule_task(task).await;
 
         Ok(())
