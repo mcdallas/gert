@@ -1,5 +1,5 @@
 use crate::errors::GertError;
-use crate::structures::{Listing, Post};
+use crate::structs::{Listing, Post};
 use log::{debug, error};
 use reqwest::Client;
 use std::fmt::Write;

@@ -1,6 +1,6 @@
 use crate::auth::Auth;
 use crate::errors::GertError;
-use crate::structures::{Listing, UserAbout};
+use crate::structs::{Listing, UserAbout};
 use log::{debug, info};
 use std::borrow::Borrow;
 use std::fmt;

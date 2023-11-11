@@ -13,8 +13,8 @@ use log::{debug, error, info, warn};
 use url::{Position, Url};
 
 use crate::errors::GertError;
-use crate::structures::Post;
-use crate::structures::{StreamableApiResponse, TokenResponse, RedGif};
+use crate::structs::Post;
+use crate::structs::{StreamableApiResponse, TokenResponse, RedGif};
 use crate::utils::{check_path_present, check_url_has_mime_type, parse_mpd, contains_any};
 
 pub static JPG: &str = "jpg";
