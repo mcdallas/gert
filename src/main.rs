@@ -289,6 +289,34 @@ async fn main() -> Result<(), GertError> {
 
     let mut posts: Vec<Post> = Vec::with_capacity(limit as usize * subreddits.len());
     if let Some(url) = single_url {
+
+        let mut url = url.as_str();
+
+        let temp_client = reqwest::Client::builder()
+                .redirect(reqwest::redirect::Policy::none())
+                .user_agent(get_user_agent_string("anon"))
+                .build()?;
+        // Check for redirections with a head request
+        let response = temp_client
+            .head(url)
+            .send()
+            .await
+            .map_err(|_| GertError::UrlNotFound(url.to_string()))?;
+
+        if response.status().is_redirection() {
+            url = response
+                .headers()
+                .get(reqwest::header::LOCATION)
+                .and_then(|h| h.to_str().ok())
+                .unwrap_or_else(|| exit("No redirection location found"));
+        }
+        // Strip url params
+        let url = if url.contains('?') {
+            &url[..url.find('?').unwrap()]
+        } else {
+            url
+        };
+
         let url = format!("{}.json", url);
         let single_listing: SingleListing = match session.get(&url).send().await {
             Ok(response) => response.json().await.map_err(|_| GertError::JsonParseError(url))?,

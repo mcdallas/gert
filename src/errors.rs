@@ -39,4 +39,6 @@ pub enum GertError {
     ZipError(#[from] zip::result::ZipError),
     #[error("Media has been removed from imgur")]
     ImgurRemovedError,
+    #[error("Url not found {0}")]
+    UrlNotFound(String),
 }
