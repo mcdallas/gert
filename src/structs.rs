@@ -301,9 +301,9 @@ pub struct TokenResponse {
 pub struct MediaInfo {
     pub sd: String,
     pub hd: String,
-    pub poster: String,
-    pub thumbnail: String,
-    pub vthumbnail: String,
+    // pub poster: String,
+    // pub thumbnail: String,
+    // pub vthumbnail: String,
 }
 #[derive(Deserialize, Debug, Clone)]
 pub struct InnerGif {

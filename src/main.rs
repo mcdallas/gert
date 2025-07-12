@@ -303,7 +303,7 @@ async fn main() -> Result<(), GertError> {
             .await
             .map_err(|_| GertError::UrlNotFound(url.to_string()))?;
 
-        if response.status().is_redirection() {
+        if response.status() == reqwest::StatusCode::MOVED_PERMANENTLY {
             url = response
                 .headers()
                 .get(reqwest::header::LOCATION)
